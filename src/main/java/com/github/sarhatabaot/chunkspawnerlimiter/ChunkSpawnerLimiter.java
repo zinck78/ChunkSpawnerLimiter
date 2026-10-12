@@ -68,13 +68,13 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.removalTaskManager = new RemovalTaskManager(this, counterDataManager, pluginConfig);
         this.notificationService = new NotificationService(pluginConfig);
 
-        // Entity chunk tracker for cross-chunk movement detection (polls every 2s / 40 ticks)
-        this.entityChunkTracker = new EntityChunkTracker(
-                this,
-                counterDataManager,
-                entity -> Checks.shouldTrackEntity(entity, pluginConfig),
-                40L
-        );
+        // Lazy mode creates no repeating movement task and no per-entity UUID map.
+        // Spawn/breeding/overflow checks use chunk.getEntities() on demand.
+        this.entityChunkTracker = pluginConfig.isEntityMovementTrackingEnabled()
+                ? new EntityChunkTracker(
+                        this, counterDataManager,
+                        entity -> Checks.shouldTrackEntity(entity, pluginConfig), 40L)
+                : EntityChunkTracker.disabled(this, counterDataManager);
 
         RemovalMode.setup(removalTaskManager);
         this.priorityEnforcer = new NamedPriorityEnforcer(
@@ -92,7 +92,10 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         DespawnListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
         EntityTransformListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
 
-        if (rebuildLoadedChunks) {
+        // Loaded spawn chunks may predate plugin enable. Reconcile existing
+        // overflow once, but never start periodic entity movement polling.
+        if (rebuildLoadedChunks ||
+                (pluginConfig.shouldTrimExistingOverflow() && !entityChunkTracker.isEnabled())) {
             chunkListener.rebuildLoadedChunks();
         }
     }
