@@ -5,7 +5,8 @@
 #   - at most 48 livestock across all listed types COMBINED
 #   - at most 8 villagers (separate from the livestock allowance)
 # Existing excess animals/villagers are never deleted by this preset.
-# Wandering traders, hostile mobs and MythicMobs are not limited here.
+# Wandering traders and hostile types are not in this list.
+# MythicMobs based on a listed animal type still count toward these caps.
 enabled: true
 debug-messages: false
 metrics: false
