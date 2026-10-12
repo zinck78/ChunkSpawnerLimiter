@@ -10,12 +10,12 @@ import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Iterator;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Predicate;
 
 /**
@@ -29,9 +29,10 @@ public class EntityChunkTracker {
     private static final int DEFAULT_MAX_ENTITIES_PER_POLL = 256;
 
     private final Map<UUID, TrackedEntity> trackedEntities = new ConcurrentHashMap<>();
-    private final Queue<UUID> pollingQueue = new ConcurrentLinkedQueue<>();
-    // Membership stays until the ticket is consumed: no O(n) queue.remove on mob death.
-    private final Set<UUID> queuedIds = ConcurrentHashMap.newKeySet();
+    // All Bukkit entity events and the scheduled poll run on the server thread.
+    // LinkedHashSet preserves round-robin order and supports O(1) removals,
+    // unlike ConcurrentLinkedQueue.remove(Object)'s linear traversal.
+    private final Set<UUID> pollingQueue = new LinkedHashSet<>();
     private final CounterDataManager counterDataManager;
     private final Predicate<Entity> isTracked;
     private final Plugin plugin;
@@ -83,9 +84,7 @@ public class EntityChunkTracker {
         if (!isTracked.test(entity)) return;
         UUID uuid = entity.getUniqueId();
         trackedEntities.put(uuid, TrackedEntity.from(entity));
-        if (queuedIds.add(uuid)) {
-            pollingQueue.offer(uuid);
-        }
+        pollingQueue.add(uuid);
     }
 
     /**
@@ -94,15 +93,15 @@ public class EntityChunkTracker {
     public void recordExit(@NotNull Entity entity) {
         UUID uuid = entity.getUniqueId();
         trackedEntities.remove(uuid);
-        // Do not search the polling queue. Any pending ticket is discarded lazily
-        // when the bounded poll encounters it (or reused on a quick re-entry).
+        pollingQueue.remove(uuid);
     }
 
     public void forgetChunk(@NotNull ChunkCoord chunkCoord) {
         for (Map.Entry<UUID, TrackedEntity> entry : trackedEntities.entrySet()) {
             if (entry.getValue().chunkCoord().equals(chunkCoord)) {
-                // The bounded poll skips stale tickets after a chunk unload.
-                trackedEntities.remove(entry.getKey(), entry.getValue());
+                if (trackedEntities.remove(entry.getKey(), entry.getValue())) {
+                    pollingQueue.remove(entry.getKey());
+                }
             }
         }
     }
@@ -112,20 +111,18 @@ public class EntityChunkTracker {
      * and update counters accordingly.
      */
     void pollEntityMovements() {
-        int processed = 0;
-        while (processed < maxEntitiesPerPoll) {
-            UUID uuid = pollingQueue.poll();
-            if (uuid == null) {
-                break;
-            }
+        // Never visit the same entity twice per poll when fewer than 256
+        // entities exist; this also bounds work under high population.
+        int batchSize = Math.min(maxEntitiesPerPoll, pollingQueue.size());
+        for (int processed = 0; processed < batchSize; processed++) {
+            Iterator<UUID> iterator = pollingQueue.iterator();
+            UUID uuid = iterator.next();
+            iterator.remove();
 
             TrackedEntity previous = trackedEntities.get(uuid);
             if (previous != null && reconcileTrackedEntity(uuid, previous)) {
-                pollingQueue.offer(uuid);
-            } else {
-                queuedIds.remove(uuid);
+                pollingQueue.add(uuid);
             }
-            processed++;
         }
     }
 
