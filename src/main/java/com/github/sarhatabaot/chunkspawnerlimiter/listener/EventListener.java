@@ -145,11 +145,13 @@ public class EventListener implements Listener {
 
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
+        final var groupMembers = pluginConfig.getEntityGroupTotalMembers(entityType);
         final var counts = counterDataManager.synchronizeEntityCounts(
-                chunk, entityType, pluginConfig.getEntityGroupTotalMembers(entityType), entity);
+                chunk, entityType, groupMembers, entity);
 
         final Integer entityTypeLimit = pluginConfig.getResolvedEntityLimit(entityType);
-        final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(entityType);
+        final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(entityType);
 
         boolean withinTypeLimit = entityTypeLimit == null ||
             Checks.isUnderOrEqualToLimit(counts.typeCount(), entityTypeLimit);
@@ -293,10 +295,12 @@ public class EventListener implements Listener {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
 
+        final var groupMembers = pluginConfig.getEntityGroupTotalMembers(vehicleType);
         final var counts = counterDataManager.synchronizeEntityCounts(
-                chunk, vehicleType, pluginConfig.getEntityGroupTotalMembers(vehicleType), vehicle);
+                chunk, vehicleType, groupMembers, vehicle);
         final Integer vehicleTypeLimit = pluginConfig.getResolvedEntityLimit(vehicleType);
-        final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(vehicleType);
+        final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(vehicleType);
         boolean withinTypeLimit = vehicleTypeLimit == null ||
             Checks.isUnderOrEqualToLimit(counts.typeCount(), vehicleTypeLimit);
         boolean withinGroupLimit = groupTotalLimit == null ||
@@ -359,7 +363,8 @@ public class EventListener implements Listener {
             int actualCount = 0;
             int actualGroupCount = 0;
             final var groupMembers = pluginConfig.getEntityGroupTotalMembers(entityType);
-            final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(entityType);
+            final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                    ? null : pluginConfig.getEntityGroupTotalLimit(entityType);
             for (Entity e : chunk.getEntities()) {
                 if (!e.isValid() || e.isDead()) continue;
                 if (e.getType() == entityType) actualCount++;
