@@ -70,7 +70,8 @@ entities:
     nbt: []
 
 # Only configure reasons relevant to natural populations and player-controlled
-# spawns. CHUNK_GEN is intentionally omitted to preserve natural villages.\n# Unknown spawn reasons are harmless; the plugin matches names.
+# spawns. CHUNK_GEN is intentionally omitted to preserve natural villages.
+# Unknown spawn reasons are harmless; the plugin matches names.
 spawn-reasons:
   - BREEDING
   - NATURAL
