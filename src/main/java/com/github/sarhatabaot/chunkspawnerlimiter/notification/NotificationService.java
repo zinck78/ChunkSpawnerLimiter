@@ -48,7 +48,7 @@ public class NotificationService {
                                       int count, int limit, boolean combinedGroup) {
         if (!config.shouldNotifyPlayersInChunk()) return;
         String species = type.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
-        String scope = combinedGroup ? "combined livestock population" : species + " population";
+        String scope = combinedGroup ? "combined livestock" : species;
         String message = config.getBreedingBlockedMessage()
                 .replace("{type}", species)
                 .replace("{scope}", scope)
