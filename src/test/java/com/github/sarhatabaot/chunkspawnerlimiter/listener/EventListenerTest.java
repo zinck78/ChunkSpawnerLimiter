@@ -43,6 +43,44 @@ import static org.mockito.Mockito.when;
 class EventListenerTest {
 
     @Test
+    @DisplayName("Should cancel over-limit breeding and notify the breeder")
+    void shouldCancelBreedingAndNotifyPlayerWithActualCap() {
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notices = mock(NotificationService.class);
+        EventListener listener = new EventListener(
+                mock(Plugin.class), config, new CounterDataManager(),
+                notices, mock(EntityChunkTracker.class));
+
+        Entity calf = mock(Entity.class);
+        Entity existing = mock(Entity.class);
+        Player breeder = mock(Player.class);
+        org.bukkit.event.Cancellable breed = mock(org.bukkit.event.Cancellable.class);
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        Location location = mock(Location.class);
+
+        when(config.isCreatureSpawnWatch()).thenReturn(true);
+        when(config.getSpawnReasons()).thenReturn(java.util.Set.of("BREEDING"));
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(1);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(calf.getWorld()).thenReturn(world);
+        when(calf.getType()).thenReturn(EntityType.COW);
+        when(calf.getLocation()).thenReturn(location);
+        when(existing.getType()).thenReturn(EntityType.COW);
+        when(location.getChunk()).thenReturn(chunk);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.getEntities()).thenReturn(new Entity[]{existing});
+
+        listener.onCompatibleBreed(calf, breeder, breed);
+
+        verify(breed).setCancelled(true);
+        verify(notices).notifyBreedingBlocked(breeder, chunk, EntityType.COW, 1, 1);
+    }
+
+    @Test
     @DisplayName("Should ignore creature spawns when creature watching is disabled")
     void shouldIgnoreCreatureSpawnsWhenCreatureWatchingIsDisabled() {
         PluginConfig pluginConfig = mock(PluginConfig.class);
