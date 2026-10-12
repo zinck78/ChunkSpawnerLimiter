@@ -70,7 +70,7 @@ public final class NamedPriorityEnforcer {
 
     private void drain() {
         drainScheduled = false;
-        int max = config.getInspectionMaxChunksPerTick();
+        int max = Math.max(1, config.getInspectionMaxChunksPerTick());
         java.util.Iterator<ChunkCoord> iterator = pending.iterator();
         for (int scanned = 0; scanned < max && iterator.hasNext(); scanned++) {
             ChunkCoord coord = iterator.next();
