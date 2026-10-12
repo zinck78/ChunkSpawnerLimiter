@@ -60,6 +60,29 @@ moves or removes them.
 For an Actuality-specific preset, see `presets/actuality.yml`. This is an
 example to be copied into the plugin data folder, not automatically enabled.
 
+### Actuality: named priority and breeding feedback
+
+The Actuality preset explicitly opts into `entities.removal.trim-existing-overflow: true`.
+This **changes the otherwise non-destructive `prevent` behavior**: on chunk
+loads, moves across chunk boundaries, and applying a name tag, existing
+over-limit animals may be silently removed (without drops). Unnamed animals
+are removed before named ones. If 17 cows are all named and the cow cap is
+16, one named cow is still removed. Younger mobs go first when both have the
+same name priority, with UUID as a stable tie breaker. Existing named mobs
+take precedence over newly arriving named mobs when no unnamed replacement
+can satisfy the cap.
+
+A freshly blocked breeding attempt is cancelled, not compensated by killing
+a resident. The modern breeding event is handled when available, plus
+a BREEDING spawn-reason fallback for older servers. The preset sends a
+rate-limited chat message to the breeder with the type and limit. Consumed
+breeding food and name tags are not refunded.
+
+**Back up populated worlds before enabling this setting.** On a server
+containing substantially over-limit legacy farms, the next chunk load can
+remove a significant number of mobs. To keep the stock `prevent` behavior,
+leave `trim-existing-overflow: false` (its default).
+
 ## Configuration
 
 Edit `plugins/ChunkSpawnerLimiter/config.yml` and run `/csl reload` to apply changes.
