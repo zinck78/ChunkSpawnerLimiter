@@ -1,0 +1,109 @@
+# Actuality-specific configuration preset for ChunkSpawnerLimiter.
+# Copy to plugins/ChunkSpawnerLimiter/config.yml, retaining a backup.
+# A chunk (16x16, full world height) permits:
+#   - at most 16 of any individual listed livestock type
+#   - at most 48 livestock across all listed types COMBINED
+#   - at most 8 villagers (separate from the livestock allowance)
+# Existing excess animals/villagers are never deleted by this preset.
+# Wandering traders, hostile mobs and MythicMobs are not limited here.
+enabled: true
+debug-messages: false
+metrics: false
+
+events:
+  spawn:
+    creature: true
+    vehicle: true
+    entity: true
+  inspections:
+    enabled: false
+    frequency: 60
+    max-chunks-per-tick: 8
+
+entities:
+  entity-groups:
+    LIVESTOCK:
+      - COW
+      - MOOSHROOM
+      - SHEEP
+      - PIG
+      - CHICKEN
+      - GOAT
+      - RABBIT
+      - HORSE
+      - DONKEY
+      - MULE
+      - LLAMA
+      - CAMEL
+      - BEE
+      - WOLF
+      - CAT
+      - FOX
+      - FROG
+      - AXOLOTL
+      - TURTLE
+      - ARMADILLO
+      - SNIFFER
+      - PANDA
+      - PARROT
+    NPC:
+      - VILLAGER
+  limits:
+    LIVESTOCK: 16
+    VILLAGER: 8
+  group-total-limits:
+    LIVESTOCK: 48
+  compatibility:
+    defer-count-until-next-tick: false
+  preservation:
+    named-entities: true
+    raid-entities: true
+  removal:
+    mode: prevent
+    armor-stand:
+      drop: false
+      log-warnings: false
+    kill-players: false
+  ignore:
+    metadata:
+      - shopkeeper
+    nbt: []
+
+# Only configure reasons relevant to natural populations and player-controlled
+# spawns. Unknown spawn reasons are harmless; the plugin matches names.
+spawn-reasons:
+  - BREEDING
+  - NATURAL
+  - CHUNK_GEN
+  - DEFAULT
+  - SPAWNER_EGG
+  - DISPENSE_EGG
+  - EGG
+  - CUSTOM
+  - COMMAND
+  - CURED
+  - MOUNT
+
+# We are not using this plugin to restrict block placement.
+blocks:
+  block-groups: {}
+  limits: {}
+
+worlds:
+  mode: excluded
+  list:
+    - instances
+
+notifications:
+  enabled: false
+  cooldown-seconds: 3
+  method:
+    title: false
+    message: false
+  messages:
+    entities-blocked: "&7Too many of that mob in this chunk."
+    entities-removed: "&7Entity removed."
+    reload-complete: "&aEntity limits reloaded."
+    max-blocks: "&cBlock cap reached."
+    max-blocks-title: "&cBlock cap reached."
+    max-blocks-subtitle: "&cLimit reached."
