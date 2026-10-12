@@ -8,6 +8,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterData;
 import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterDataManager;
 import com.github.sarhatabaot.chunkspawnerlimiter.notification.NotificationService;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.Checks;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import org.bukkit.Chunk;
@@ -15,6 +16,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Pig;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -22,6 +24,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.vehicle.VehicleCreateEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.plugin.Plugin;
@@ -33,16 +36,26 @@ public class EventListener implements Listener {
     private final CounterDataManager counterDataManager;
     private final NotificationService notificationService;
     private final EntityChunkTracker chunkTracker;
+    private final NamedPriorityEnforcer priorityEnforcer;
 
     public EventListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
                          NotificationService notificationService,
                          EntityChunkTracker chunkTracker) {
+        this(plugin, pluginConfig, counterDataManager, notificationService, chunkTracker, null);
+    }
+
+    public EventListener(Plugin plugin, PluginConfig pluginConfig,
+                         CounterDataManager counterDataManager,
+                         NotificationService notificationService,
+                         EntityChunkTracker chunkTracker,
+                         NamedPriorityEnforcer priorityEnforcer) {
         this.plugin = plugin;
         this.pluginConfig = pluginConfig;
         this.counterDataManager = counterDataManager;
         this.notificationService = notificationService;
         this.chunkTracker = chunkTracker;
+        this.priorityEnforcer = priorityEnforcer;
     }
 
     // -- Player lifecycle ----------------------------------------------------
@@ -50,6 +63,46 @@ public class EventListener implements Listener {
     @EventHandler
     public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
         notificationService.cleanup(event.getPlayer());
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onEntityBreed(@NotNull EntityBreedEvent event) {
+        if (!pluginConfig.isCreatureSpawnWatch()
+                || !pluginConfig.getSpawnReasons().contains("BREEDING")
+                || pluginConfig.isWorldDisabled(event.getEntity().getWorld().getName())) return;
+        Entity child = event.getEntity();
+        EntityType type = child.getType();
+        if (!Checks.shouldTrackEntity(child, pluginConfig)) return;
+
+        Chunk chunk = child.getLocation().getChunk();
+        if (!chunk.isLoaded()) return;
+        var members = pluginConfig.getEntityGroupTotalMembers(type);
+        var counts = counterDataManager.synchronizeEntityCounts(chunk, type, members, child);
+        Integer speciesCap = pluginConfig.getResolvedEntityLimit(type);
+        Integer groupCap = members == null || members.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(type);
+
+        boolean speciesFull = speciesCap != null && counts.typeCount() >= speciesCap;
+        boolean groupFull = groupCap != null && counts.groupCount() >= groupCap;
+        if (!speciesFull && !groupFull) return;
+
+        event.setCancelled(true);
+        Player breeder = event.getBreeder() instanceof Player player ? player : null;
+        int count = speciesFull ? counts.typeCount() : counts.groupCount();
+        int cap = speciesFull ? speciesCap : groupCap;
+        notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onNameTagApplied(@NotNull PlayerInteractEntityEvent event) {
+        if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
+        var held = event.getPlayer().getInventory().getItem(event.getHand());
+        if (held.getType() != Material.NAME_TAG) return;
+        Entity target = event.getRightClicked();
+        if (!Checks.shouldTrackEntity(target, pluginConfig)
+                || pluginConfig.isWorldDisabled(target.getWorld().getName())) return;
+        // Interaction fires before vanilla applies the tag. Recheck after it is named.
+        priorityEnforcer.queue(ChunkCoord.from(target));
     }
 
     // -- Block events --------------------------------------------------------
@@ -158,6 +211,17 @@ public class EventListener implements Listener {
         boolean withinGroupLimit = groupTotalLimit == null ||
             Checks.isUnderOrEqualToLimit(counts.groupCount(), groupTotalLimit);
 
+        if ((!withinTypeLimit || !withinGroupLimit) && priorityEnforcer != null
+                && entity.getCustomName() != null
+                && priorityEnforcer.makeRoomForNamedSpawn(chunk, entity)) {
+            // A named arrival replaced lower-priority unnamed residents.
+            var refreshed = counterDataManager.synchronizeEntityCounts(chunk, entityType, groupMembers, entity);
+            withinTypeLimit = entityTypeLimit == null
+                    || Checks.isUnderOrEqualToLimit(refreshed.typeCount(), entityTypeLimit);
+            withinGroupLimit = groupTotalLimit == null
+                    || Checks.isUnderOrEqualToLimit(refreshed.groupCount(), groupTotalLimit);
+        }
+
         if (withinTypeLimit && withinGroupLimit) {
             CSLLogger.debug(() -> "%s entity under entity limits (type: %d/%s)".formatted(
                 entityType.name(),
@@ -171,7 +235,14 @@ public class EventListener implements Listener {
             return;
         }
 
-        notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
+        if (event instanceof CreatureSpawnEvent creatureEvent
+                && creatureEvent.getSpawnReason() == CreatureSpawnEvent.SpawnReason.BREEDING) {
+            int count = !withinTypeLimit ? counts.typeCount() : counts.groupCount();
+            int cap = !withinTypeLimit ? entityTypeLimit : groupTotalLimit;
+            notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap);
+        } else {
+            notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
+        }
 
         RemovalMode removalMode = pluginConfig.getRemovalMode();
         removalMode.handleEntity(entity, event);
