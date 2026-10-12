@@ -96,7 +96,9 @@ public class EventListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onNameTagApplied(@NotNull PlayerInteractEntityEvent event) {
         if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
-        var held = event.getPlayer().getInventory().getItem(event.getHand());
+        var inventory = event.getPlayer().getInventory();
+        var held = event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND
+                ? inventory.getItemInMainHand() : inventory.getItemInOffHand();
         if (held.getType() != Material.NAME_TAG) return;
         Entity target = event.getRightClicked();
         if (!Checks.shouldTrackEntity(target, pluginConfig)
