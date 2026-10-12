@@ -60,11 +60,26 @@ moves or removes them.
 For an Actuality-specific preset, see `presets/actuality.yml`. This is an
 example to be copied into the plugin data folder, not automatically enabled.
 
+### Actuality: lazy entity tracking
+
+The preset sets `entities.movement-tracking.enabled: false`. This bypasses
+the scheduled movement poll entirely and skips per-entity UUID bookkeeping
+and redundant chunk-load counter initialization. New spawns, breeding
+attempts and named arrivals still count the *live entities in their chunk*
+before allowing them. The opt-in overflow cleanup still runs once when
+chunks load (and when a name tag is applied).
+
+Transporting animals across chunk borders can temporarily exceed the cap;
+overcrowding is reconciled at the next loaded-population check. If immediate
+cross-chunk enforcement is desired, set `entities.movement-tracking.enabled:
+true` (the legacy/default behavior). Enabling movement tracking does not
+change the standard chunk spawn limits.
+
 ### Actuality: named priority and breeding feedback
 
 The Actuality preset explicitly opts into `entities.removal.trim-existing-overflow: true`.
 This **changes the otherwise non-destructive `prevent` behavior**: on chunk
-loads, moves across chunk boundaries, and applying a name tag, existing
+loads and applying a name tag, existing
 over-limit animals may be silently removed (without drops). Unnamed animals
 are removed before named ones. If 17 cows are all named and the cow cap is
 16, one named cow is still removed. Younger mobs go first when both have the
