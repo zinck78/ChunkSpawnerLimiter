@@ -311,6 +311,9 @@ public class PluginConfig {
             groupToTypes.computeIfAbsent(entry.getValue(), ignored -> EnumSet.noneOf(EntityType.class))
                     .add(entry.getKey());
         }
+        // Immutable views created once per reload, not allocated on every
+        // entity spawn and every scheduled movement tracker check.
+        groupToTypes.replaceAll((group, types) -> Collections.unmodifiableSet(types));
     }
 
     /**
@@ -413,7 +416,7 @@ public class PluginConfig {
     public Set<EntityType> getEntityGroupTotalMembers(EntityType type) {
         String group = entityToGroup.get(type);
         return group != null && groupTotalLimits.containsKey(group)
-                ? Collections.unmodifiableSet(groupToTypes.getOrDefault(group, Set.of()))
+                ? groupToTypes.getOrDefault(group, Set.of())
                 : Set.of();
     }
 
@@ -424,7 +427,7 @@ public class PluginConfig {
 
     /** Returns member types for a configured group. */
     public Set<EntityType> getEntityGroupMembers(String group) {
-        return Collections.unmodifiableSet(groupToTypes.getOrDefault(group, Set.of()));
+        return groupToTypes.getOrDefault(group, Set.of());
     }
 
     /**
