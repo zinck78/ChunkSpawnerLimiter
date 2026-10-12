@@ -24,6 +24,30 @@ import static org.mockito.Mockito.*;
 class NamedPriorityEnforcerTest {
 
     @Test
+    void burstsOfLoadedChunksScheduleOnlyOneDrainTask() {
+        org.bukkit.Server server = mock(org.bukkit.Server.class);
+        org.bukkit.scheduler.BukkitScheduler scheduler = mock(org.bukkit.scheduler.BukkitScheduler.class);
+        Plugin plugin = mock(Plugin.class);
+        when(plugin.getServer()).thenReturn(server);
+        when(server.getScheduler()).thenReturn(scheduler);
+        PluginConfig config = config();
+        NamedPriorityEnforcer enforcer = new NamedPriorityEnforcer(
+                plugin, config, new CounterDataManager(),
+                mock(EntityChunkTracker.class), mock(NotificationService.class));
+
+        UUID world = UUID.randomUUID();
+        com.github.sarhatabaot.chunkspawnerlimiter.chunk.ChunkCoord first =
+                new com.github.sarhatabaot.chunkspawnerlimiter.chunk.ChunkCoord(world, 0, 0);
+        com.github.sarhatabaot.chunkspawnerlimiter.chunk.ChunkCoord second =
+                new com.github.sarhatabaot.chunkspawnerlimiter.chunk.ChunkCoord(world, 0, 1);
+        enforcer.queue(first);
+        enforcer.queue(first);
+        enforcer.queue(second);
+
+        verify(scheduler, times(1)).runTask(eq(plugin), any(Runnable.class));
+    }
+
+    @Test
     void prefersUnnamedCowOverSeventeenNamedAndUnnamedCows() {
         TestWorld test = new TestWorld();
         PluginConfig config = config();
