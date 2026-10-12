@@ -90,17 +90,17 @@ public class EventListener implements Listener {
         int count = speciesFull ? counts.typeCount() : counts.groupCount();
         int cap = speciesFull ? speciesCap : groupCap;
         notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap, !speciesFull);
-        queueBreedingOverflowCleanup(chunk, counts.typeCount(), speciesCap,
+        queueSpawnOverflowCleanup(chunk, counts.typeCount(), speciesCap,
                 counts.groupCount(), groupCap);
     }
 
     /**
-     * A rejected calf is NOT an extra existing animal. Clean up only when the
-     * chunk was already above its cap (e.g. animals were transported into it).
-     * Avoid scheduling another chunk scan when the population is exactly full.
-     * NamedPriorityEnforcer coalesces repeated requests and trims unnamed first.
+     * A rejected spawn is NOT an extra existing entity. Only clean up when
+     * the resident population is already over its cap (e.g. transported mobs).
+     * At exactly the cap we cancel the incoming spawn and do not scan again.
+     * The named-priority enforcer deduplicates queued cleanup requests.
      */
-    private void queueBreedingOverflowCleanup(Chunk chunk,
+    private void queueSpawnOverflowCleanup(Chunk chunk,
                                               int typeCount, Integer typeLimit,
                                               int groupCount, Integer groupLimit) {
         if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
@@ -269,11 +269,15 @@ public class EventListener implements Listener {
             int count = !withinTypeLimit ? counts.typeCount() : counts.groupCount();
             int cap = !withinTypeLimit ? entityTypeLimit : groupTotalLimit;
             notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap, withinTypeLimit);
-            queueBreedingOverflowCleanup(chunk, counts.typeCount(), entityTypeLimit,
-                    counts.groupCount(), groupTotalLimit);
         } else {
             notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
         }
+
+        // Whether natural, egg/command/custom, or a breeding fallback,
+        // a rejected spawn is a convenient on-demand opportunity to reconcile
+        // pre-existing overflow without a periodic movement or chunk scan.
+        queueSpawnOverflowCleanup(chunk, counts.typeCount(), entityTypeLimit,
+                counts.groupCount(), groupTotalLimit);
 
         RemovalMode removalMode = pluginConfig.getRemovalMode();
         removalMode.handleEntity(entity, event);
