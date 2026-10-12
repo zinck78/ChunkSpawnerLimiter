@@ -7,6 +7,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScanne
 import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScannerFactory;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.Checks;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.RemovalTaskManager;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import org.bukkit.Chunk;
@@ -27,16 +28,26 @@ public class ChunkListener implements Listener {
     private final RemovalTaskManager removalTaskManager;
     private final EntityChunkTracker chunkTracker;
     private final BlockScanner blockScanner;
+    private final NamedPriorityEnforcer priorityEnforcer;
 
     public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
                          RemovalTaskManager removalTaskManager,
                          EntityChunkTracker chunkTracker) {
+        this(plugin, pluginConfig, counterDataManager, removalTaskManager, chunkTracker, null);
+    }
+
+    public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
+                         CounterDataManager counterDataManager,
+                         RemovalTaskManager removalTaskManager,
+                         EntityChunkTracker chunkTracker,
+                         NamedPriorityEnforcer priorityEnforcer) {
         this.plugin = plugin;
         this.pluginConfig = pluginConfig;
         this.counterDataManager = counterDataManager;
         this.removalTaskManager = removalTaskManager;
         this.chunkTracker = chunkTracker;
+        this.priorityEnforcer = priorityEnforcer;
         this.blockScanner = BlockScannerFactory.create(plugin, pluginConfig, counterDataManager);
     }
 
@@ -53,6 +64,9 @@ public class ChunkListener implements Listener {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
 
         addEntityLimits(chunk, chunkCoord);
+        if (priorityEnforcer != null) {
+            priorityEnforcer.queue(chunkCoord);
+        }
         
         // Scan blocks asynchronously on chunk load
         blockScanner.scanChunk(chunk, chunkCoord, true);
