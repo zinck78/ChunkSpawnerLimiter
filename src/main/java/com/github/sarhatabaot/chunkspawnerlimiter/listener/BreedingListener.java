@@ -37,7 +37,7 @@ public final class BreedingListener {
                                 CSLLogger.debug(() -> "Breeding handler error: " + exception.getMessage());
                             }
                         }
-                    }, plugin, true);
+                    }, plugin);
         } catch (ClassNotFoundException ignored) {
             // Legacy versions use the CreatureSpawnEvent BREEDING fallback.
         } catch (ReflectiveOperationException exception) {
