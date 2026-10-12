@@ -39,10 +39,20 @@ public class EntityChunkTracker {
     private final Plugin plugin;
     private final long intervalTicks;
     private final int maxEntitiesPerPoll;
+    private final boolean enabled;
     private Consumer<ChunkCoord> arrivalHandler = coord -> { };
 
     public void setArrivalHandler(Consumer<ChunkCoord> arrivalHandler) {
         this.arrivalHandler = arrivalHandler;
+    }
+
+    /**
+     * No entity map and no periodic poll in lazy mode. Spawn and breeding
+     * enforcement uses the current chunk's live entities directly.
+     */
+    public static EntityChunkTracker disabled(Plugin plugin, CounterDataManager counterDataManager) {
+        return new EntityChunkTracker(plugin, counterDataManager, entity -> false, 40L,
+                DEFAULT_MAX_ENTITIES_PER_POLL, false, false);
     }
 
     public EntityChunkTracker(Plugin plugin,
@@ -68,14 +78,30 @@ public class EntityChunkTracker {
                        long intervalTicks,
                        int maxEntitiesPerPoll,
                        boolean startPolling) {
+        this(plugin, counterDataManager, isTracked, intervalTicks,
+                maxEntitiesPerPoll, startPolling, true);
+    }
+
+    private EntityChunkTracker(Plugin plugin,
+                               CounterDataManager counterDataManager,
+                               Predicate<Entity> isTracked,
+                               long intervalTicks,
+                               int maxEntitiesPerPoll,
+                               boolean startPolling,
+                               boolean enabled) {
         this.plugin = plugin;
         this.counterDataManager = counterDataManager;
         this.isTracked = isTracked;
         this.intervalTicks = intervalTicks;
         this.maxEntitiesPerPoll = Math.max(1, maxEntitiesPerPoll);
-        if (startPolling) {
+        this.enabled = enabled;
+        if (enabled && startPolling) {
             startPolling();
         }
+    }
+
+    public boolean isEnabled() {
+        return enabled;
     }
 
     private void startPolling() {
@@ -87,7 +113,7 @@ public class EntityChunkTracker {
      * Record that an entity exists in a specific chunk (call on spawn/world-entry).
      */
     public void recordEntry(@NotNull Entity entity) {
-        if (!isTracked.test(entity)) return;
+        if (!enabled || !isTracked.test(entity)) return;
         UUID uuid = entity.getUniqueId();
         trackedEntities.put(uuid, TrackedEntity.from(entity));
         pollingQueue.add(uuid);
@@ -97,12 +123,14 @@ public class EntityChunkTracker {
      * Remove tracking for an entity (call on death/despawn/world-exit).
      */
     public void recordExit(@NotNull Entity entity) {
+        if (!enabled) return;
         UUID uuid = entity.getUniqueId();
         trackedEntities.remove(uuid);
         pollingQueue.remove(uuid);
     }
 
     public void forgetChunk(@NotNull ChunkCoord chunkCoord) {
+        if (!enabled) return;
         for (Map.Entry<UUID, TrackedEntity> entry : trackedEntities.entrySet()) {
             if (entry.getValue().chunkCoord().equals(chunkCoord)) {
                 if (trackedEntities.remove(entry.getKey(), entry.getValue())) {
@@ -117,6 +145,7 @@ public class EntityChunkTracker {
      * and update counters accordingly.
      */
     void pollEntityMovements() {
+        if (!enabled) return;
         // Never visit the same entity twice per poll when fewer than 256
         // entities exist; this also bounds work under high population.
         int batchSize = Math.min(maxEntitiesPerPoll, pollingQueue.size());
@@ -159,6 +188,7 @@ public class EntityChunkTracker {
     }
 
     void reconcileEntities(Iterable<Entity> currentEntities) {
+        if (!enabled) return;
         int movesDetected = 0;
         Set<UUID> presentEntities = new HashSet<>();
 
