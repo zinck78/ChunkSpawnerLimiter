@@ -30,6 +30,8 @@ public class EntityChunkTracker {
 
     private final Map<UUID, TrackedEntity> trackedEntities = new ConcurrentHashMap<>();
     private final Queue<UUID> pollingQueue = new ConcurrentLinkedQueue<>();
+    // Membership stays until the ticket is consumed: no O(n) queue.remove on mob death.
+    private final Set<UUID> queuedIds = ConcurrentHashMap.newKeySet();
     private final CounterDataManager counterDataManager;
     private final Predicate<Entity> isTracked;
     private final Plugin plugin;
@@ -80,7 +82,8 @@ public class EntityChunkTracker {
     public void recordEntry(@NotNull Entity entity) {
         if (!isTracked.test(entity)) return;
         UUID uuid = entity.getUniqueId();
-        if (trackedEntities.put(uuid, TrackedEntity.from(entity)) == null) {
+        trackedEntities.put(uuid, TrackedEntity.from(entity));
+        if (queuedIds.add(uuid)) {
             pollingQueue.offer(uuid);
         }
     }
@@ -91,16 +94,15 @@ public class EntityChunkTracker {
     public void recordExit(@NotNull Entity entity) {
         UUID uuid = entity.getUniqueId();
         trackedEntities.remove(uuid);
-        while (pollingQueue.remove(uuid)) {
-        }
+        // Do not search the polling queue. Any pending ticket is discarded lazily
+        // when the bounded poll encounters it (or reused on a quick re-entry).
     }
 
     public void forgetChunk(@NotNull ChunkCoord chunkCoord) {
         for (Map.Entry<UUID, TrackedEntity> entry : trackedEntities.entrySet()) {
-            if (entry.getValue().chunkCoord().equals(chunkCoord)
-                    && trackedEntities.remove(entry.getKey(), entry.getValue())) {
-                while (pollingQueue.remove(entry.getKey())) {
-                }
+            if (entry.getValue().chunkCoord().equals(chunkCoord)) {
+                // The bounded poll skips stale tickets after a chunk unload.
+                trackedEntities.remove(entry.getKey(), entry.getValue());
             }
         }
     }
@@ -120,6 +122,8 @@ public class EntityChunkTracker {
             TrackedEntity previous = trackedEntities.get(uuid);
             if (previous != null && reconcileTrackedEntity(uuid, previous)) {
                 pollingQueue.offer(uuid);
+            } else {
+                queuedIds.remove(uuid);
             }
             processed++;
         }
