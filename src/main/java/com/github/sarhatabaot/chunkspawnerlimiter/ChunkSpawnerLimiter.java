@@ -11,6 +11,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.notification.NotificationServi
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.Checks;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.ExternalChecks;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.RemovalTaskManager;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import me.despical.commandframework.CommandFramework;
@@ -32,6 +33,7 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
     private NotificationService notificationService;
     private EntityChunkTracker entityChunkTracker;
     private ChunkListener chunkListener;
+    private NamedPriorityEnforcer priorityEnforcer;
 
     @Override
     public void onEnable() {
@@ -74,11 +76,16 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         );
 
         RemovalMode.setup(removalTaskManager);
+        this.priorityEnforcer = new NamedPriorityEnforcer(
+                this, pluginConfig, counterDataManager, entityChunkTracker, notificationService);
+        this.entityChunkTracker.setArrivalHandler(priorityEnforcer::queue);
 
         PluginManager pluginManager = Bukkit.getPluginManager();
-        this.chunkListener = new ChunkListener(this, pluginConfig, counterDataManager, removalTaskManager, entityChunkTracker);
+        this.chunkListener = new ChunkListener(this, pluginConfig, counterDataManager,
+                removalTaskManager, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(chunkListener, this);
-        pluginManager.registerEvents(new EventListener(this, pluginConfig, counterDataManager, notificationService, entityChunkTracker), this);
+        pluginManager.registerEvents(new EventListener(this, pluginConfig, counterDataManager,
+                notificationService, entityChunkTracker, priorityEnforcer), this);
         DespawnListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
         EntityTransformListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
 
@@ -124,6 +131,7 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.notificationService = null;
         this.entityChunkTracker = null;
         this.chunkListener = null;
+        this.priorityEnforcer = null;
     }
 
     public void onReload() {
