@@ -54,7 +54,7 @@ public class CounterDataManager {
         int typeCount = 0;
         int groupCount = 0;
         for (Entity entity : chunk.getEntities()) {
-            if (entity == excludedEntity || !entity.isValid() || entity.isDead()) {
+            if (entity == excludedEntity) {
                 continue;
             }
             EntityType existingType = entity.getType();
