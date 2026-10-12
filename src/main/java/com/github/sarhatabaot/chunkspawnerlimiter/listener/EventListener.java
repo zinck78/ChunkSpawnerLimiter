@@ -90,6 +90,24 @@ public class EventListener implements Listener {
         int count = speciesFull ? counts.typeCount() : counts.groupCount();
         int cap = speciesFull ? speciesCap : groupCap;
         notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap, !speciesFull);
+        queueBreedingOverflowCleanup(chunk, counts.typeCount(), speciesCap,
+                counts.groupCount(), groupCap);
+    }
+
+    /**
+     * A rejected calf is NOT an extra existing animal. Clean up only when the
+     * chunk was already above its cap (e.g. animals were transported into it).
+     * Avoid scheduling another chunk scan when the population is exactly full.
+     * NamedPriorityEnforcer coalesces repeated requests and trims unnamed first.
+     */
+    private void queueBreedingOverflowCleanup(Chunk chunk,
+                                              int typeCount, Integer typeLimit,
+                                              int groupCount, Integer groupLimit) {
+        if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
+        if ((typeLimit != null && typeCount > typeLimit)
+                || (groupLimit != null && groupCount > groupLimit)) {
+            priorityEnforcer.queue(ChunkCoord.from(chunk));
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -251,6 +269,8 @@ public class EventListener implements Listener {
             int count = !withinTypeLimit ? counts.typeCount() : counts.groupCount();
             int cap = !withinTypeLimit ? entityTypeLimit : groupTotalLimit;
             notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap, withinTypeLimit);
+            queueBreedingOverflowCleanup(chunk, counts.typeCount(), entityTypeLimit,
+                    counts.groupCount(), groupTotalLimit);
         } else {
             notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
         }
