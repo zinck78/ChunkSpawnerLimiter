@@ -69,11 +69,17 @@ attempts and named arrivals still count the *live entities in their chunk*
 before allowing them. The opt-in overflow cleanup still runs once when
 chunks load (and when a name tag is applied).
 
-Transporting animals across chunk borders can temporarily exceed the cap;
-overcrowding is reconciled at the next loaded-population check. If immediate
-cross-chunk enforcement is desired, set `entities.movement-tracking.enabled:
-true` (the legacy/default behavior). Enabling movement tracking does not
-change the standard chunk spawn limits.
+Transporting animals across chunk borders can temporarily exceed the cap.
+When any configured spawn or breeding attempt is denied, the plugin uses its
+freshly counted population to check whether the **existing** animals already
+exceed their species/group cap. If they do, it queues one deduplicated
+named-priority cleanup pass; if they are exactly at the cap, the newcomer is
+blocked and no existing animal is removed. The one-off cleanup is also
+triggered on chunk load and name-tag interactions; no periodic scans run.
+
+If immediate cross-chunk enforcement is desired, set
+`entities.movement-tracking.enabled: true` (the legacy/default behavior).
+Enabling movement tracking does not change the standard chunk spawn limits.
 
 ### Actuality: named priority and breeding feedback
 
@@ -88,9 +94,12 @@ take precedence over newly arriving named mobs when no unnamed replacement
 can satisfy the cap.
 
 A freshly blocked breeding attempt is cancelled, not compensated by killing
-a resident. The modern breeding event is handled when available, plus
-a BREEDING spawn-reason fallback for older servers. The preset sends a
-rate-limited chat message to the breeder with the type and limit. Consumed
+a resident **when the existing population is merely at the cap**. If the
+chunk was already overcrowded before the attempted birth, excess existing
+mobs are trimmed, unnamed first. The same applies to denied non-breeding
+spawns (including villagers). The modern breeding event is handled when
+available, plus a BREEDING spawn-reason fallback for older servers. The
+preset sends a rate-limited message with the blocked cap. Consumed
 breeding food and name tags are not refunded.
 
 **Back up populated worlds before enabling this setting.** On a server
