@@ -48,6 +48,26 @@ public class CounterDataManager {
         return count;
     }
 
+    /** Counts a spawning entity's type and optional shared group in one chunk scan. */
+    public EntityPopulationCounts synchronizeEntityCounts(@NotNull Chunk chunk, @NotNull EntityType type,
+            @NotNull java.util.Set<EntityType> groupMembers, @Nullable Entity excludedEntity) {
+        int typeCount = 0;
+        int groupCount = 0;
+        for (Entity entity : chunk.getEntities()) {
+            if (entity == excludedEntity || !entity.isValid() || entity.isDead()) {
+                continue;
+            }
+            EntityType existingType = entity.getType();
+            if (existingType == type) typeCount++;
+            if (groupMembers.contains(existingType)) groupCount++;
+        }
+
+        getCounterData(ChunkCoord.from(chunk)).setEntityCount(type, typeCount);
+        return new EntityPopulationCounts(typeCount, groupCount);
+    }
+
+    public record EntityPopulationCounts(int typeCount, int groupCount) {}
+
     public void decrementEntityIfPresent(@NotNull ChunkCoord chunkCoord, @NotNull EntityType type) {
         CounterData counterData = loadedChunkCounters.get(chunkCoord);
         if (counterData != null) {
