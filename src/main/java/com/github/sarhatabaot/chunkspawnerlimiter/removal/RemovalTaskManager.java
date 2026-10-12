@@ -178,6 +178,41 @@ public class RemovalTaskManager {
             }
         }
 
+        // Shared group totals are enforced after individual type limits. In
+        // prevent mode processChunk is never scheduled, so existing animals
+        // remain untouched; enforce/remove modes can clean up shared overflow.
+        for (Map.Entry<String, Integer> groupLimit : pluginConfig.getEntityGroupTotalLimits().entrySet()) {
+            Set<EntityType> members = pluginConfig.getEntityGroupMembers(groupLimit.getKey());
+            if (members.isEmpty()) continue;
+
+            Entity[] currentEntities = chunk.getEntities();
+            int groupCount = 0;
+            for (Entity entity : currentEntities) {
+                if (members.contains(entity.getType()) && isCountableEntity(entity)) {
+                    groupCount++;
+                }
+            }
+
+            int overflow = groupCount - groupLimit.getValue();
+            if (overflow <= 0) continue;
+            if (activeRaiderUuids == null) {
+                activeRaiderUuids = pluginConfig.shouldPreserveRaidEntities()
+                        ? RaidReflection.getActiveRaiderUuids(chunk.getWorld())
+                        : Collections.emptySet();
+            }
+
+            for (Entity entity : currentEntities) {
+                if (overflow <= 0) break;
+                if (!members.contains(entity.getType()) || !isCountableEntity(entity)
+                        || shouldSkipRemoval(entity, activeRaiderUuids)) {
+                    continue;
+                }
+                removalAction.accept(entity);
+                removalAttempted = true;
+                overflow--;
+            }
+        }
+
         if (removalAttempted) {
             for (EntityType type : counterTypes) {
                 data.setEntityCount(type, 0);
