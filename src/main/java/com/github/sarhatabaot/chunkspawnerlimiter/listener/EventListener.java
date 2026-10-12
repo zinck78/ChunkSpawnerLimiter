@@ -65,12 +65,11 @@ public class EventListener implements Listener {
         notificationService.cleanup(event.getPlayer());
     }
 
-    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
-    public void onEntityBreed(@NotNull EntityBreedEvent event) {
+    /** Called by the optional modern breeding-event bridge. */
+    public void onCompatibleBreed(@NotNull Entity child, Entity breederEntity, @NotNull org.bukkit.event.Cancellable event) {
         if (!pluginConfig.isCreatureSpawnWatch()
                 || !pluginConfig.getSpawnReasons().contains("BREEDING")
-                || pluginConfig.isWorldDisabled(event.getEntity().getWorld().getName())) return;
-        Entity child = event.getEntity();
+                || pluginConfig.isWorldDisabled(child.getWorld().getName())) return;
         EntityType type = child.getType();
         if (!Checks.shouldTrackEntity(child, pluginConfig)) return;
 
@@ -87,7 +86,7 @@ public class EventListener implements Listener {
         if (!speciesFull && !groupFull) return;
 
         event.setCancelled(true);
-        Player breeder = event.getBreeder() instanceof Player player ? player : null;
+        Player breeder = breederEntity instanceof Player player ? player : null;
         int count = speciesFull ? counts.typeCount() : counts.groupCount();
         int cap = speciesFull ? speciesCap : groupCap;
         notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap);
@@ -96,10 +95,20 @@ public class EventListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onNameTagApplied(@NotNull PlayerInteractEntityEvent event) {
         if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
-        var inventory = event.getPlayer().getInventory();
-        var held = event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND
-                ? inventory.getItemInMainHand() : inventory.getItemInOffHand();
-        if (held.getType() != Material.NAME_TAG) return;
+        // Main source set targets an older Spigot API; reflect the hand
+        // introduced later so both legacy and modern server builds compile.
+        org.bukkit.inventory.ItemStack held = event.getPlayer().getItemInHand();
+        try {
+            Object hand = event.getClass().getMethod("getHand").invoke(event);
+            if ("OFF_HAND".equals(hand.toString())) {
+                held = (org.bukkit.inventory.ItemStack) event.getPlayer().getInventory()
+                        .getClass().getMethod("getItemInOffHand")
+                        .invoke(event.getPlayer().getInventory());
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Older Bukkit has no offhand.
+        }
+        if (held == null || held.getType() != Material.NAME_TAG) return;
         Entity target = event.getRightClicked();
         if (!Checks.shouldTrackEntity(target, pluginConfig)
                 || pluginConfig.isWorldDisabled(target.getWorld().getName())) return;
