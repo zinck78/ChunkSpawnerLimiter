@@ -77,7 +77,7 @@ class EventListenerTest {
         listener.onCompatibleBreed(calf, breeder, breed);
 
         verify(breed).setCancelled(true);
-        verify(notices).notifyBreedingBlocked(breeder, chunk, EntityType.COW, 1, 1);
+        verify(notices).notifyBreedingBlocked(breeder, chunk, EntityType.COW, 1, 1, false);
     }
 
     @Test
