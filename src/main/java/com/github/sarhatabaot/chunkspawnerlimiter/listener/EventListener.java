@@ -293,11 +293,16 @@ public class EventListener implements Listener {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
 
+        final var counts = counterDataManager.synchronizeEntityCounts(
+                chunk, vehicleType, pluginConfig.getEntityGroupTotalMembers(vehicleType), vehicle);
         final Integer vehicleTypeLimit = pluginConfig.getResolvedEntityLimit(vehicleType);
+        final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(vehicleType);
         boolean withinTypeLimit = vehicleTypeLimit == null ||
-            Checks.isUnderOrEqualToLimit(counterData.getEntityCount(vehicleType), vehicleTypeLimit);
+            Checks.isUnderOrEqualToLimit(counts.typeCount(), vehicleTypeLimit);
+        boolean withinGroupLimit = groupTotalLimit == null ||
+            Checks.isUnderOrEqualToLimit(counts.groupCount(), groupTotalLimit);
 
-        if (withinTypeLimit) {
+        if (withinTypeLimit && withinGroupLimit) {
             counterData.incrementEntity(vehicleType);
             chunkTracker.recordEntry(vehicle);
             return;
