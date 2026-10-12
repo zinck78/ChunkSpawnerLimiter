@@ -155,7 +155,8 @@ class EntityChunkTrackerTest {
         tracker.recordEntry(entity);
 
         Location moved = mock(Location.class);
-        when(moved.getChunk()).thenReturn(chunk(world, 2, 2));
+        Chunk destinationChunk = chunk(world, 2, 2);
+        when(moved.getChunk()).thenReturn(destinationChunk);
         when(entity.getLocation()).thenReturn(moved);
 
         tracker.pollEntityMovements();
