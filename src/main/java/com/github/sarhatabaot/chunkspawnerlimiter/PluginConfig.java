@@ -582,6 +582,16 @@ public class PluginConfig {
     }
 
     /**
+     * Actuality opt-in: clean excess existing mobs on chunk load and when
+     * names or chunk membership change, choosing unnamed mobs first.
+     * Unlike the standard prevent mode, this can remove existing named mobs
+     * when every eligible member of an over-limit species is named.
+     */
+    public boolean shouldTrimExistingOverflow() {
+        return config.getBoolean("entities.removal.trim-existing-overflow", false);
+    }
+
+    /**
      * Checks if raid-related entities should be preserved from removal.
      *
      * @return true if raid entities should be preserved, false otherwise
@@ -740,6 +750,11 @@ public class PluginConfig {
     public String getEntitiesBlockedMessage() {
         return config.getString("notifications.messages.entities-blocked", 
             "&7Blocked {count} {type} from spawning in your chunk.");
+    }
+
+    public String getBreedingBlockedMessage() {
+        return config.getString("notifications.messages.breeding-blocked",
+                "&cBreeding blocked: &e{type} &7population has reached &e{count}/{limit}&7 in this chunk.");
     }
 
     /**
