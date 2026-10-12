@@ -166,8 +166,24 @@ class EntityChunkTrackerTest {
     }
 
     @Test
-    @DisplayName("Should lazily drain stale entries after bulk entity exits")
-    void shouldDrainBulkExitedEntitiesWithoutQueueSearch() {
+    @DisplayName("Should inspect one tracked mob just once in each scheduled poll")
+    void shouldNotPollSmallPopulationRepeatedly() {
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = new EntityChunkTracker(
+                mock(Plugin.class), manager, entity -> true, 40L, 256, false);
+        World world = mock(World.class);
+        Entity cow = entity(world, EntityType.COW, 1, 1);
+        tracker.recordEntry(cow);
+
+        tracker.pollEntityMovements();
+
+        org.mockito.Mockito.verify(cow, org.mockito.Mockito.times(1)).isDead();
+        assertThat(tracker.getTrackedCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("Should handle bulk entity exits without leaving stale queue entries")
+    void shouldHandleBulkExitedEntitiesWithoutQueueSearch() {
         CounterDataManager manager = new CounterDataManager();
         EntityChunkTracker tracker = new EntityChunkTracker(
                 mock(Plugin.class), manager, entity -> true, 40L, 256, false);
