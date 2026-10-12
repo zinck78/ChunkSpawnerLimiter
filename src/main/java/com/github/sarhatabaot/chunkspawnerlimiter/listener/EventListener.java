@@ -363,7 +363,7 @@ public class EventListener implements Listener {
             for (Entity e : chunk.getEntities()) {
                 if (!e.isValid() || e.isDead()) continue;
                 if (e.getType() == entityType) actualCount++;
-                if (groupMembers.contains(e.getType())) actualGroupCount++;
+                if (groupMembers != null && groupMembers.contains(e.getType())) actualGroupCount++;
             }
 
             // Sync counter from actual chunk state (each stack = 1, not N).
