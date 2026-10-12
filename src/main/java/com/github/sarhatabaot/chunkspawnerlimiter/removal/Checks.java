@@ -13,7 +13,8 @@ public class Checks {
     }
 
     public static boolean shouldTrackEntity(final Entity entity, final PluginConfig config) {
-        return config.hasResolvedEntityLimit(entity.getType())
+        return (config.hasResolvedEntityLimit(entity.getType())
+                || !config.getEntityGroupTotalMembers(entity.getType()).isEmpty())
                 && (!(entity instanceof Player) || config.isKillPlayers());
     }
 

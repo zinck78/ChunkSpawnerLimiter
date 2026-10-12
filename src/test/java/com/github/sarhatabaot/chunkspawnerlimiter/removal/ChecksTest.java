@@ -58,4 +58,16 @@ class ChecksTest {
 
         assertThat(Checks.shouldTrackEntity(zombie, config)).isFalse();
     }
+
+    @Test
+    @DisplayName("Should track mobs with only a combined group cap configured")
+    void shouldIncludeEntitiesUnderOnlySharedCap() {
+        PluginConfig config = mock(PluginConfig.class);
+        Entity cow = mock(Entity.class);
+        when(cow.getType()).thenReturn(EntityType.COW);
+        when(config.getEntityGroupTotalMembers(EntityType.COW))
+                .thenReturn(java.util.Set.of(EntityType.COW, EntityType.SHEEP));
+
+        assertThat(Checks.shouldTrackEntity(cow, config)).isTrue();
+    }
 }

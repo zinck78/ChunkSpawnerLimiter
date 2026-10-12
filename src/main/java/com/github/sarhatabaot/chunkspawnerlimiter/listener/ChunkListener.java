@@ -7,6 +7,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScanne
 import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScannerFactory;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.Checks;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.RemovalTaskManager;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import org.bukkit.Chunk;
@@ -27,16 +28,26 @@ public class ChunkListener implements Listener {
     private final RemovalTaskManager removalTaskManager;
     private final EntityChunkTracker chunkTracker;
     private final BlockScanner blockScanner;
+    private final NamedPriorityEnforcer priorityEnforcer;
 
     public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
                          RemovalTaskManager removalTaskManager,
                          EntityChunkTracker chunkTracker) {
+        this(plugin, pluginConfig, counterDataManager, removalTaskManager, chunkTracker, null);
+    }
+
+    public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
+                         CounterDataManager counterDataManager,
+                         RemovalTaskManager removalTaskManager,
+                         EntityChunkTracker chunkTracker,
+                         NamedPriorityEnforcer priorityEnforcer) {
         this.plugin = plugin;
         this.pluginConfig = pluginConfig;
         this.counterDataManager = counterDataManager;
         this.removalTaskManager = removalTaskManager;
         this.chunkTracker = chunkTracker;
+        this.priorityEnforcer = priorityEnforcer;
         this.blockScanner = BlockScannerFactory.create(plugin, pluginConfig, counterDataManager);
     }
 
@@ -52,7 +63,16 @@ public class ChunkListener implements Listener {
     private void initializeChunk(@NotNull Chunk chunk) {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
 
-        addEntityLimits(chunk, chunkCoord);
+        // Do not build a redundant per-chunk entity cache or register every
+        // animal when only spawn/breeding checks are wanted. Those checks count
+        // the actual live entities at the time of the event.
+        if (chunkTracker.isEnabled()) {
+            addEntityLimits(chunk, chunkCoord);
+        }
+        // The one-time loaded-population trim remains opt-in and event-driven.
+        if (priorityEnforcer != null && pluginConfig.shouldTrimExistingOverflow()) {
+            priorityEnforcer.queue(chunkCoord);
+        }
         
         // Scan blocks asynchronously on chunk load
         blockScanner.scanChunk(chunk, chunkCoord, true);

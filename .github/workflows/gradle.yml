@@ -2,9 +2,9 @@ name: Java CI with Gradle (kotlin)
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, 'feature/**' ]
   pull_request:
-    branches: [ master ]
+    branches: [ master, 'feature/**' ]
 
 permissions:
   contents: read
@@ -23,9 +23,19 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Build with Gradle
-        run: ./gradlew build
+        run: ./gradlew shadowJar check
+      - name: Upload test plugin jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChunkSpawnerLimiter-shared-groups-test
+          path: build/libs/chunkspawnerlimiter-*.jar
+          if-no-files-found: error
 
   dependency-submission:
+    # The upstream repository has dependency submissions enabled; new forks
+    # may not have their dependency graph enabled yet.
+    if: github.repository == 'sarhatabaot/ChunkSpawnerLimiter' && github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -34,6 +34,9 @@ public class PluginConfig {
     private Map<EntityType, Integer> resolvedEntityLimits;
     private Map<EntityType, String> entityToGroup;
     private Set<String> entityGroups;
+    private Map<String, Set<EntityType>> groupToTypes;
+    private Map<String, Integer> groupTotalLimits;
+    private Set<EntityType> trackedEntityTypes;
 
     // Block limit mappings
     private Map<Material, Integer> directBlockLimits;
@@ -73,6 +76,7 @@ public class PluginConfig {
 
         loadEntityGroups();
         loadEntityLimits();
+        loadEntityGroupTotalLimits();
 
         this.blockLimits = null;
         loadBlockGroups();
@@ -302,6 +306,14 @@ public class PluginConfig {
                 }
             }
         }
+        groupToTypes = new HashMap<>();
+        for (Map.Entry<EntityType, String> entry : entityToGroup.entrySet()) {
+            groupToTypes.computeIfAbsent(entry.getValue(), ignored -> EnumSet.noneOf(EntityType.class))
+                    .add(entry.getKey());
+        }
+        // Immutable views created once per reload, not allocated on every
+        // entity spawn and every scheduled movement tracker check.
+        groupToTypes.replaceAll((group, types) -> Collections.unmodifiableSet(types));
     }
 
     /**
@@ -365,6 +377,60 @@ public class PluginConfig {
     }
 
     /**
+     * Loads optional group-wide caps. Unlike entities.limits (which resolves to a
+     * separate limit for every type), these count all members of a group together.
+     * Negative values disable the group cap; unrecognized group names are ignored.
+     */
+    private void loadEntityGroupTotalLimits() {
+        groupTotalLimits = new HashMap<>();
+        ConfigurationSection section = config.getConfigurationSection("entities.group-total-limits");
+        if (section != null) {
+            for (String key : section.getKeys(false)) {
+                String group = key.toUpperCase(Locale.ROOT);
+                if (!entityGroups.contains(group)) {
+                    plugin.getLogger().warning("Unknown entity group '" + key
+                            + "' at entities.group-total-limits." + key + "; skipping it.");
+                    continue;
+                }
+                int limit = section.getInt(key, -1);
+                if (limit >= 0) {
+                    groupTotalLimits.put(group, limit);
+                }
+            }
+        }
+
+        EnumSet<EntityType> tracked = EnumSet.noneOf(EntityType.class);
+        tracked.addAll(resolvedEntityLimits.keySet());
+        for (String group : groupTotalLimits.keySet()) {
+            tracked.addAll(groupToTypes.getOrDefault(group, Set.of()));
+        }
+        trackedEntityTypes = Collections.unmodifiableSet(tracked);
+    }
+
+    /** Returns an optional shared cap for the group containing this entity. */
+    public Integer getEntityGroupTotalLimit(EntityType type) {
+        return groupTotalLimits.get(entityToGroup.get(type));
+    }
+
+    /** Returns the active shared-cap group's members for this entity, or an empty set. */
+    public Set<EntityType> getEntityGroupTotalMembers(EntityType type) {
+        String group = entityToGroup.get(type);
+        return group != null && groupTotalLimits.containsKey(group)
+                ? groupToTypes.getOrDefault(group, Set.of())
+                : Set.of();
+    }
+
+    /** Returns all enabled shared caps, keyed by configured group name. */
+    public Map<String, Integer> getEntityGroupTotalLimits() {
+        return Collections.unmodifiableMap(groupTotalLimits);
+    }
+
+    /** Returns member types for a configured group. */
+    public Set<EntityType> getEntityGroupMembers(String group) {
+        return groupToTypes.getOrDefault(group, Set.of());
+    }
+
+    /**
      * Gets the resolved limit for a specific entity type.
      * The resolved limit considers both direct limits and group limits.
      *
@@ -386,7 +452,7 @@ public class PluginConfig {
     }
 
     public Set<EntityType> getResolvedEntityTypes() {
-        return Collections.unmodifiableSet(resolvedEntityLimits.keySet());
+        return trackedEntityTypes;
     }
 
     private void validateLimitKeys(String description, String path, Set<String> configuredKeys,
@@ -513,6 +579,26 @@ public class PluginConfig {
      */
     public boolean shouldPreserveNamedEntities() {
         return config.getBoolean("entities.preservation.named-entities", true);
+    }
+
+    /**
+     * Actuality opt-in: clean excess existing mobs on chunk load and when
+     * names or chunk membership change, choosing unnamed mobs first.
+     * Unlike the standard prevent mode, this can remove existing named mobs
+     * when every eligible member of an over-limit species is named.
+     */
+    public boolean shouldTrimExistingOverflow() {
+        return config.getBoolean("entities.removal.trim-existing-overflow", false);
+    }
+
+    /**
+     * Optional movement polling (backwards-compatible default). Disabling this
+     * avoids UUID bookkeeping and repeating tasks; spawn/breeding checks still
+     * recount the live chunk when needed. Cross-chunk arrivals may remain over
+     * capacity until the next load/name-tag check.
+     */
+    public boolean isEntityMovementTrackingEnabled() {
+        return config.getBoolean("entities.movement-tracking.enabled", true);
     }
 
     /**
@@ -673,7 +759,12 @@ public class PluginConfig {
      */
     public String getEntitiesBlockedMessage() {
         return config.getString("notifications.messages.entities-blocked", 
-            "&7Blocked {count} {type} from spawning in your chunk.");
+            "&cEntity spawn limit reached: &e{type}&c cannot spawn here.");
+    }
+
+    public String getBreedingBlockedMessage() {
+        return config.getString("notifications.messages.breeding-blocked",
+                "&cSpawn limit reached: &e{scope} &7(&e{count}/{limit}&7). Move mobs to another chunk.");
     }
 
     /**

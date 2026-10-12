@@ -8,6 +8,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterData;
 import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterDataManager;
 import com.github.sarhatabaot.chunkspawnerlimiter.notification.NotificationService;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.Checks;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import org.bukkit.Chunk;
@@ -15,6 +16,7 @@ import org.bukkit.Material;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Pig;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -22,6 +24,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.*;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.vehicle.VehicleCreateEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.plugin.Plugin;
@@ -33,16 +36,26 @@ public class EventListener implements Listener {
     private final CounterDataManager counterDataManager;
     private final NotificationService notificationService;
     private final EntityChunkTracker chunkTracker;
+    private final NamedPriorityEnforcer priorityEnforcer;
 
     public EventListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
                          NotificationService notificationService,
                          EntityChunkTracker chunkTracker) {
+        this(plugin, pluginConfig, counterDataManager, notificationService, chunkTracker, null);
+    }
+
+    public EventListener(Plugin plugin, PluginConfig pluginConfig,
+                         CounterDataManager counterDataManager,
+                         NotificationService notificationService,
+                         EntityChunkTracker chunkTracker,
+                         NamedPriorityEnforcer priorityEnforcer) {
         this.plugin = plugin;
         this.pluginConfig = pluginConfig;
         this.counterDataManager = counterDataManager;
         this.notificationService = notificationService;
         this.chunkTracker = chunkTracker;
+        this.priorityEnforcer = priorityEnforcer;
     }
 
     // -- Player lifecycle ----------------------------------------------------
@@ -50,6 +63,75 @@ public class EventListener implements Listener {
     @EventHandler
     public void onPlayerQuit(@NotNull PlayerQuitEvent event) {
         notificationService.cleanup(event.getPlayer());
+    }
+
+    /** Called by the optional modern breeding-event bridge. */
+    public void onCompatibleBreed(@NotNull Entity child, Entity breederEntity, @NotNull org.bukkit.event.Cancellable event) {
+        if (!pluginConfig.isCreatureSpawnWatch()
+                || !pluginConfig.getSpawnReasons().contains("BREEDING")
+                || pluginConfig.isWorldDisabled(child.getWorld().getName())) return;
+        EntityType type = child.getType();
+        if (!Checks.shouldTrackEntity(child, pluginConfig)) return;
+
+        Chunk chunk = child.getLocation().getChunk();
+        if (!chunk.isLoaded()) return;
+        var members = pluginConfig.getEntityGroupTotalMembers(type);
+        var counts = counterDataManager.synchronizeEntityCounts(chunk, type, members, child);
+        Integer speciesCap = pluginConfig.getResolvedEntityLimit(type);
+        Integer groupCap = members == null || members.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(type);
+
+        boolean speciesFull = speciesCap != null && counts.typeCount() >= speciesCap;
+        boolean groupFull = groupCap != null && counts.groupCount() >= groupCap;
+        if (!speciesFull && !groupFull) return;
+
+        event.setCancelled(true);
+        Player breeder = breederEntity instanceof Player player ? player : null;
+        int count = speciesFull ? counts.typeCount() : counts.groupCount();
+        int cap = speciesFull ? speciesCap : groupCap;
+        notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap, !speciesFull);
+        queueSpawnOverflowCleanup(chunk, counts.typeCount(), speciesCap,
+                counts.groupCount(), groupCap);
+    }
+
+    /**
+     * A rejected spawn is NOT an extra existing entity. Only clean up when
+     * the resident population is already over its cap (e.g. transported mobs).
+     * At exactly the cap we cancel the incoming spawn and do not scan again.
+     * The named-priority enforcer deduplicates queued cleanup requests.
+     */
+    private void queueSpawnOverflowCleanup(Chunk chunk,
+                                              int typeCount, Integer typeLimit,
+                                              int groupCount, Integer groupLimit) {
+        if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
+        if ((typeLimit != null && typeCount > typeLimit)
+                || (groupLimit != null && groupCount > groupLimit)) {
+            priorityEnforcer.queue(ChunkCoord.from(chunk));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onNameTagApplied(@NotNull PlayerInteractEntityEvent event) {
+        if (priorityEnforcer == null || !pluginConfig.shouldTrimExistingOverflow()) return;
+        // Main source set targets an older Spigot API; reflect the hand
+        // introduced later so both legacy and modern server builds compile.
+        org.bukkit.inventory.ItemStack held = event.getPlayer().getItemInHand();
+        try {
+            Object hand = event.getClass().getMethod("getHand").invoke(event);
+            if ("OFF_HAND".equals(hand.toString())) {
+                held = (org.bukkit.inventory.ItemStack) event.getPlayer().getInventory()
+                        .getClass().getMethod("getItemInOffHand")
+                        .invoke(event.getPlayer().getInventory());
+            }
+        } catch (ReflectiveOperationException ignored) {
+            // Older Bukkit has no offhand.
+        }
+        if (held == null || held.getType() != Material.NAME_TAG) return;
+        Entity target = event.getRightClicked();
+        if (!Checks.shouldTrackEntity(target, pluginConfig)
+                || pluginConfig.isWorldDisabled(target.getWorld().getName())) return;
+        // Interaction fires before vanilla applies the tag. Recheck after it is named.
+        priorityEnforcer.queue(ChunkCoord.from(target));
     }
 
     // -- Block events --------------------------------------------------------
@@ -145,17 +227,34 @@ public class EventListener implements Listener {
 
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
-        final int existingEntityCount = counterDataManager.synchronizeEntityCount(chunk, entityType, entity);
+        final var groupMembers = pluginConfig.getEntityGroupTotalMembers(entityType);
+        final var counts = counterDataManager.synchronizeEntityCounts(
+                chunk, entityType, groupMembers, entity);
 
         final Integer entityTypeLimit = pluginConfig.getResolvedEntityLimit(entityType);
+        final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(entityType);
 
         boolean withinTypeLimit = entityTypeLimit == null ||
-            Checks.isUnderOrEqualToLimit(existingEntityCount, entityTypeLimit);
+            Checks.isUnderOrEqualToLimit(counts.typeCount(), entityTypeLimit);
+        boolean withinGroupLimit = groupTotalLimit == null ||
+            Checks.isUnderOrEqualToLimit(counts.groupCount(), groupTotalLimit);
 
-        if (withinTypeLimit) {
+        if ((!withinTypeLimit || !withinGroupLimit) && priorityEnforcer != null
+                && entity.getCustomName() != null
+                && priorityEnforcer.makeRoomForNamedSpawn(chunk, entity)) {
+            // A named arrival replaced lower-priority unnamed residents.
+            var refreshed = counterDataManager.synchronizeEntityCounts(chunk, entityType, groupMembers, entity);
+            withinTypeLimit = entityTypeLimit == null
+                    || Checks.isUnderOrEqualToLimit(refreshed.typeCount(), entityTypeLimit);
+            withinGroupLimit = groupTotalLimit == null
+                    || Checks.isUnderOrEqualToLimit(refreshed.groupCount(), groupTotalLimit);
+        }
+
+        if (withinTypeLimit && withinGroupLimit) {
             CSLLogger.debug(() -> "%s entity under entity limits (type: %d/%s)".formatted(
                 entityType.name(),
-                existingEntityCount,
+                counts.typeCount(),
                 entityTypeLimit != null ? String.valueOf(entityTypeLimit) : "unlimited"
             ));
 
@@ -165,7 +264,20 @@ public class EventListener implements Listener {
             return;
         }
 
-        notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
+        if (event instanceof CreatureSpawnEvent creatureEvent
+                && creatureEvent.getSpawnReason() == CreatureSpawnEvent.SpawnReason.BREEDING) {
+            int count = !withinTypeLimit ? counts.typeCount() : counts.groupCount();
+            int cap = !withinTypeLimit ? entityTypeLimit : groupTotalLimit;
+            notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap, withinTypeLimit);
+        } else {
+            notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
+        }
+
+        // Whether natural, egg/command/custom, or a breeding fallback,
+        // a rejected spawn is a convenient on-demand opportunity to reconcile
+        // pre-existing overflow without a periodic movement or chunk scan.
+        queueSpawnOverflowCleanup(chunk, counts.typeCount(), entityTypeLimit,
+                counts.groupCount(), groupTotalLimit);
 
         RemovalMode removalMode = pluginConfig.getRemovalMode();
         removalMode.handleEntity(entity, event);
@@ -289,11 +401,18 @@ public class EventListener implements Listener {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
 
+        final var groupMembers = pluginConfig.getEntityGroupTotalMembers(vehicleType);
+        final var counts = counterDataManager.synchronizeEntityCounts(
+                chunk, vehicleType, groupMembers, vehicle);
         final Integer vehicleTypeLimit = pluginConfig.getResolvedEntityLimit(vehicleType);
+        final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                ? null : pluginConfig.getEntityGroupTotalLimit(vehicleType);
         boolean withinTypeLimit = vehicleTypeLimit == null ||
-            Checks.isUnderOrEqualToLimit(counterData.getEntityCount(vehicleType), vehicleTypeLimit);
+            Checks.isUnderOrEqualToLimit(counts.typeCount(), vehicleTypeLimit);
+        boolean withinGroupLimit = groupTotalLimit == null ||
+            Checks.isUnderOrEqualToLimit(counts.groupCount(), groupTotalLimit);
 
-        if (withinTypeLimit) {
+        if (withinTypeLimit && withinGroupLimit) {
             counterData.incrementEntity(vehicleType);
             chunkTracker.recordEntry(vehicle);
             return;
@@ -348,18 +467,30 @@ public class EventListener implements Listener {
             final Integer entityTypeLimit = pluginConfig.getResolvedEntityLimit(entityType);
 
             int actualCount = 0;
+            int actualGroupCount = 0;
+            final var groupMembers = pluginConfig.getEntityGroupTotalMembers(entityType);
+            final Integer groupTotalLimit = groupMembers == null || groupMembers.isEmpty()
+                    ? null : pluginConfig.getEntityGroupTotalLimit(entityType);
             for (Entity e : chunk.getEntities()) {
-                if (e.getType() == entityType && e.isValid() && !e.isDead()) actualCount++;
+                if (!e.isValid() || e.isDead()) continue;
+                if (e.getType() == entityType) actualCount++;
+                if (groupMembers != null && groupMembers.contains(e.getType())) actualGroupCount++;
             }
 
             // Sync counter from actual chunk state (each stack = 1, not N).
             counterData.setEntityCount(entityType, actualCount);
 
-            if (entityTypeLimit != null && actualCount > entityTypeLimit) {
-                int toRemove = actualCount - entityTypeLimit;
+            final int typeExcess = entityTypeLimit == null ? 0 : Math.max(0, actualCount - entityTypeLimit);
+            final int groupExcess = groupTotalLimit == null ? 0 : Math.max(0, actualGroupCount - groupTotalLimit);
+            if (typeExcess > 0 || groupExcess > 0) {
+                // Only the newly spawned type is eligible; never delete existing
+                // members of another species to make room for a new spawn.
+                int toRemove = Math.max(typeExcess, groupExcess);
                 final int fActualCount = actualCount;
-                CSLLogger.debug(() -> "Stacking compat: chunk %s has %d %s, limit %d, removing %d"
-                        .formatted(chunkCoord, fActualCount, entityType.name(), entityTypeLimit, toRemove));
+                CSLLogger.debug(() -> "Stacking compat: chunk %s has %d %s; type limit %s, shared group limit %s; rejecting up to %d"
+                        .formatted(chunkCoord, fActualCount, entityType.name(),
+                                entityTypeLimit == null ? "unlimited" : entityTypeLimit,
+                                groupTotalLimit == null ? "unlimited" : groupTotalLimit, toRemove));
 
                 int removed = 0;
                 for (Entity e : chunk.getEntities()) {

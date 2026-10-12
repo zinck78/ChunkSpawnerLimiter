@@ -1,0 +1,126 @@
+# Actuality-specific configuration preset for ChunkSpawnerLimiter.
+# Copy to plugins/ChunkSpawnerLimiter/config.yml, retaining a backup.
+# A chunk (16x16, full world height) permits:
+#   - at most 16 of any individual listed livestock type
+#   - at most 48 livestock across all listed types COMBINED
+#   - at most 8 villagers (separate from the livestock allowance)
+# STRONGER POLICY: if a chunk contains more than its population cap,
+# excess residents ARE removed on load/name-tagging, unnamed first.
+# Cross-chunk movement may temporarily exceed these limits until a later
+# chunk load, name-tag action, or blocked spawn/breeding attempt. Any
+# rejected spawn triggers cleanup ONLY when the EXISTING population is
+# already above a cap. Reaching the cap exactly blocks the newcomer but
+# never removes a resident. No periodic entity scans or movement polling.
+# If 17 out of 17 cows are named, one named cow will be removed.
+# Removal does not drop loot or refund name tags. Back up populated worlds.
+# Wandering traders and hostile types are not in this list.
+# MythicMobs based on a listed animal type still count toward these caps.
+enabled: true
+debug-messages: false
+metrics: false
+
+events:
+  spawn:
+    creature: true
+    vehicle: true
+    entity: true
+  inspections:
+    enabled: false
+    frequency: 60
+    max-chunks-per-tick: 8
+
+entities:
+  entity-groups:
+    LIVESTOCK:
+      - COW
+      - MOOSHROOM
+      - SHEEP
+      - PIG
+      - CHICKEN
+      - GOAT
+      - RABBIT
+      - HORSE
+      - DONKEY
+      - MULE
+      - LLAMA
+      - CAMEL
+      - BEE
+      - WOLF
+      - CAT
+      - FOX
+      - FROG
+      - AXOLOTL
+      - TURTLE
+      - ARMADILLO
+      - SNIFFER
+      - PANDA
+      - PARROT
+    NPC:
+      - VILLAGER
+  limits:
+    LIVESTOCK: 16
+    VILLAGER: 8
+  group-total-limits:
+    LIVESTOCK: 48
+  # On-demand mode: disable all periodic entity movement polling and UUID
+  # bookkeeping. New spawns and breeding still use live chunk counts.
+  movement-tracking:
+    enabled: false
+  compatibility:
+    defer-count-until-next-tick: false
+  preservation:
+    # Name-tagged mobs have cleanup priority, not absolute immunity.
+    named-entities: false
+    raid-entities: true
+  removal:
+    mode: prevent
+    # Actuality addition: opt in to trimming existing population overflows.
+    trim-existing-overflow: true
+    armor-stand:
+      drop: false
+      log-warnings: false
+    kill-players: false
+  ignore:
+    metadata:
+      - shopkeeper
+    nbt: []
+
+# Only configure reasons relevant to natural populations and player-controlled
+# spawns. CHUNK_GEN is intentionally omitted to preserve natural villages.
+# Unknown spawn reasons are harmless; the plugin matches names.
+spawn-reasons:
+  - BREEDING
+  - NATURAL
+  - DEFAULT
+  - SPAWNER_EGG
+  - DISPENSE_EGG
+  - EGG
+  - CUSTOM
+  - COMMAND
+  - CURED
+  - MOUNT
+
+# We are not using this plugin to restrict block placement.
+blocks:
+  block-groups: {}
+  limits: {}
+
+worlds:
+  mode: excluded
+  list:
+    - instances
+
+notifications:
+  enabled: true
+  cooldown-seconds: 3
+  method:
+    title: false
+    message: true
+  messages:
+    entities-blocked: "&cEntity spawn limit reached: &e{type}&c cannot spawn here." 
+    breeding-blocked: "&cSpawn limit reached: &e{scope} &7(&e{count}/{limit}&7). Move mobs to another chunk."
+    entities-removed: "&eEntity population limit enforced: &f{count} {type} &eremoved (unnamed first)."
+    reload-complete: "&aEntity limits reloaded."
+    max-blocks: "&cBlock cap reached."
+    max-blocks-title: "&cBlock cap reached."
+    max-blocks-subtitle: "&cLimit reached."

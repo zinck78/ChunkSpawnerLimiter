@@ -43,6 +43,209 @@ import static org.mockito.Mockito.when;
 class EventListenerTest {
 
     @Test
+    @DisplayName("Natural cow spawns block but don't trim a chunk exactly at the species cap")
+    void naturalSpawnAtCapMustNotTrimResidents() {
+        assertBlockedSpawnCleanup(EntityType.COW, CreatureSpawnEvent.SpawnReason.NATURAL,
+                16, false, false);
+    }
+
+    @Test
+    @DisplayName("Natural cow spawns reconcile pre-existing species overflow")
+    void naturalSpawnOverCapTrimsResidents() {
+        assertBlockedSpawnCleanup(EntityType.COW, CreatureSpawnEvent.SpawnReason.NATURAL,
+                17, false, true);
+    }
+
+    @Test
+    @DisplayName("Spawn eggs trigger cleanup for villagers already above their cap")
+    void spawnEggReconcilesVillagerOverflow() {
+        assertBlockedSpawnCleanup(EntityType.VILLAGER, CreatureSpawnEvent.SpawnReason.SPAWNER_EGG,
+                9, false, true);
+        assertBlockedSpawnCleanup(EntityType.VILLAGER, CreatureSpawnEvent.SpawnReason.SPAWNER_EGG,
+                8, false, false);
+    }
+
+    @Test
+    @DisplayName("Blocked new species triggers shared livestock overflow cleanup only above group cap")
+    void groupCapTriggersCleanupOnlyWhenAlreadyOverfull() {
+        assertBlockedSpawnCleanup(EntityType.COW, CreatureSpawnEvent.SpawnReason.NATURAL,
+                48, true, false);
+        assertBlockedSpawnCleanup(EntityType.COW, CreatureSpawnEvent.SpawnReason.NATURAL,
+                49, true, true);
+    }
+
+    private void assertBlockedSpawnCleanup(EntityType incomingType,
+                                            CreatureSpawnEvent.SpawnReason reason,
+                                            int existingCount, boolean sharedGroup,
+                                            boolean expectCleanup) {
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notifications = mock(NotificationService.class);
+        com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer enforcer =
+                mock(com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer.class);
+        EventListener listener = new EventListener(
+                mock(Plugin.class), config, new CounterDataManager(),
+                notifications, mock(EntityChunkTracker.class), enforcer);
+
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        Location location = mock(Location.class);
+        org.bukkit.entity.LivingEntity incoming = mock(org.bukkit.entity.LivingEntity.class);
+        Entity[] residents = new Entity[existingCount];
+        EntityType residentType = sharedGroup ? EntityType.SHEEP : incomingType;
+        for (int i = 0; i < residents.length; i++) {
+            Entity resident = mock(Entity.class);
+            when(resident.getType()).thenReturn(residentType);
+            residents[i] = resident;
+        }
+
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(world.getName()).thenReturn("world");
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getEntities()).thenReturn(residents);
+        when(location.getWorld()).thenReturn(world);
+        when(location.getChunk()).thenReturn(chunk);
+        when(incoming.getType()).thenReturn(incomingType);
+        when(incoming.getLocation()).thenReturn(location);
+        when(config.isCreatureSpawnWatch()).thenReturn(true);
+        when(config.getSpawnReasons()).thenReturn(java.util.Set.of(reason.name()));
+        when(config.hasResolvedEntityLimit(incomingType)).thenReturn(true);
+        when(config.getResolvedEntityLimit(incomingType))
+                .thenReturn(incomingType == EntityType.VILLAGER ? 8 : 16);
+        when(config.shouldTrimExistingOverflow()).thenReturn(true);
+        when(config.getRemovalMode()).thenReturn(new Prevent(null));
+        if (sharedGroup) {
+            when(config.getEntityGroupTotalMembers(EntityType.COW))
+                    .thenReturn(java.util.Set.of(EntityType.COW, EntityType.SHEEP));
+            when(config.getEntityGroupTotalLimit(EntityType.COW)).thenReturn(48);
+        }
+
+        CreatureSpawnEvent event = mock(CreatureSpawnEvent.class);
+        when(event.getLocation()).thenReturn(location);
+        when(event.getEntity()).thenReturn(incoming);
+        when(event.getSpawnReason()).thenReturn(reason);
+        listener.onEntitySpawn(event);
+
+        verify(event).setCancelled(true);
+        verify(notifications).notifyEntitiesBlocked(chunk, incomingType, 1);
+        if (expectCleanup) {
+            verify(enforcer).queue(ChunkCoord.from(chunk));
+        } else {
+            verify(enforcer, never()).queue(any());
+        }
+    }
+
+    @Test
+    @DisplayName("Blocked breeding at exactly sixteen cows must not remove existing livestock")
+    void shouldNotQueueCleanupWhenBreedingAtExactLimit() {
+        assertBreedingOverflowCleanup(16, false);
+        assertBreedingOverflowCleanup(16, true);
+    }
+
+    @Test
+    @DisplayName("Blocked breeding in overcrowded chunks schedules named-priority cleanup")
+    void shouldQueueCleanupWhenBreedingOverLimit() {
+        assertBreedingOverflowCleanup(17, false);
+        assertBreedingOverflowCleanup(17, true);
+    }
+
+    private void assertBreedingOverflowCleanup(int existingCows, boolean spawnFallback) {
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notifications = mock(NotificationService.class);
+        com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer enforcer =
+                mock(com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer.class);
+        EventListener listener = new EventListener(
+                mock(Plugin.class), config, new CounterDataManager(),
+                notifications, mock(EntityChunkTracker.class), enforcer);
+
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        Location location = mock(Location.class);
+        org.bukkit.entity.LivingEntity calf = mock(org.bukkit.entity.LivingEntity.class);
+        Entity[] current = new Entity[existingCows];
+        for (int i = 0; i < existingCows; i++) {
+            Entity cow = mock(Entity.class);
+            when(cow.getType()).thenReturn(EntityType.COW);
+            current[i] = cow;
+        }
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(world.getName()).thenReturn("world");
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getEntities()).thenReturn(current);
+        when(location.getWorld()).thenReturn(world);
+        when(location.getChunk()).thenReturn(chunk);
+        when(calf.getWorld()).thenReturn(world);
+        when(calf.getLocation()).thenReturn(location);
+        when(calf.getType()).thenReturn(EntityType.COW);
+
+        when(config.isCreatureSpawnWatch()).thenReturn(true);
+        when(config.getSpawnReasons()).thenReturn(java.util.Set.of("BREEDING"));
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(16);
+        when(config.getEntityGroupTotalMembers(EntityType.COW)).thenReturn(java.util.Set.of());
+        when(config.shouldTrimExistingOverflow()).thenReturn(true);
+
+        if (spawnFallback) {
+            CreatureSpawnEvent event = mock(CreatureSpawnEvent.class);
+            when(event.getEntity()).thenReturn(calf);
+            when(event.getLocation()).thenReturn(location);
+            when(event.getSpawnReason()).thenReturn(CreatureSpawnEvent.SpawnReason.BREEDING);
+            when(config.getRemovalMode()).thenReturn(new Prevent(null));
+            listener.onEntitySpawn(event);
+            verify(event).setCancelled(true);
+        } else {
+            org.bukkit.event.Cancellable event = mock(org.bukkit.event.Cancellable.class);
+            listener.onCompatibleBreed(calf, mock(Player.class), event);
+            verify(event).setCancelled(true);
+        }
+
+        if (existingCows > 16) {
+            verify(enforcer).queue(ChunkCoord.from(chunk));
+        } else {
+            verify(enforcer, never()).queue(any());
+        }
+    }
+
+    @Test
+    @DisplayName("Should cancel over-limit breeding and notify the breeder")
+    void shouldCancelBreedingAndNotifyPlayerWithActualCap() {
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notices = mock(NotificationService.class);
+        EventListener listener = new EventListener(
+                mock(Plugin.class), config, new CounterDataManager(),
+                notices, mock(EntityChunkTracker.class));
+
+        Entity calf = mock(Entity.class);
+        Entity existing = mock(Entity.class);
+        Player breeder = mock(Player.class);
+        org.bukkit.event.Cancellable breed = mock(org.bukkit.event.Cancellable.class);
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        Location location = mock(Location.class);
+
+        when(config.isCreatureSpawnWatch()).thenReturn(true);
+        when(config.getSpawnReasons()).thenReturn(java.util.Set.of("BREEDING"));
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(1);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(calf.getWorld()).thenReturn(world);
+        when(calf.getType()).thenReturn(EntityType.COW);
+        when(calf.getLocation()).thenReturn(location);
+        when(existing.getType()).thenReturn(EntityType.COW);
+        when(location.getChunk()).thenReturn(chunk);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.getEntities()).thenReturn(new Entity[]{existing});
+
+        listener.onCompatibleBreed(calf, breeder, breed);
+
+        verify(breed).setCancelled(true);
+        verify(notices).notifyBreedingBlocked(breeder, chunk, EntityType.COW, 1, 1, false);
+    }
+
+    @Test
     @DisplayName("Should ignore creature spawns when creature watching is disabled")
     void shouldIgnoreCreatureSpawnsWhenCreatureWatchingIsDisabled() {
         PluginConfig pluginConfig = mock(PluginConfig.class);
@@ -361,5 +564,53 @@ class EventListenerTest {
         assertThat(counterDataManager.getCounterData(destinationCoord).getEntityCount(EntityType.ZOMBIE)).isEqualTo(1);
         verify(chunkTracker).recordEntry(entity);
         verify(chunkTracker, never()).recordExit(entity);
+    }
+
+    @Test
+    @DisplayName("Should cancel a new cow when mixed livestock has reached the shared cap")
+    void shouldPreventSpawnWhenSharedGroupIsFull() {
+        Plugin plugin = mock(Plugin.class);
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notifications = mock(NotificationService.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        CounterDataManager counters = new CounterDataManager();
+        EventListener listener = new EventListener(plugin, config, counters, notifications, tracker);
+        EntitySpawnEvent event = mock(EntitySpawnEvent.class);
+        Entity incomingCow = mock(Entity.class);
+        Entity existingCow = mock(Entity.class);
+        Entity existingSheep = mock(Entity.class);
+        Chunk chunk = mock(Chunk.class);
+        World world = mock(World.class);
+        Location location = mock(Location.class);
+
+        when(event.getLocation()).thenReturn(location);
+        when(event.getEntity()).thenReturn(incomingCow);
+        when(incomingCow.getType()).thenReturn(EntityType.COW);
+        when(incomingCow.getLocation()).thenReturn(location);
+        when(existingCow.getType()).thenReturn(EntityType.COW);
+        when(existingSheep.getType()).thenReturn(EntityType.SHEEP);
+        when(location.getWorld()).thenReturn(world);
+        when(location.getChunk()).thenReturn(chunk);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.getX()).thenReturn(1);
+        when(chunk.getZ()).thenReturn(2);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getEntities()).thenReturn(new Entity[]{existingCow, existingSheep, incomingCow});
+
+        when(config.isEntitySpawnWatch()).thenReturn(true);
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(16);
+        when(config.getEntityGroupTotalLimit(EntityType.COW)).thenReturn(2);
+        when(config.getEntityGroupTotalMembers(EntityType.COW))
+                .thenReturn(java.util.Set.of(EntityType.COW, EntityType.SHEEP));
+        when(config.getRemovalMode()).thenReturn(new Prevent(null));
+
+        listener.onEntitySpawn(event);
+
+        verify(event).setCancelled(true);
+        verify(notifications).notifyEntitiesBlocked(eq(chunk), eq(EntityType.COW), eq(1));
+        verify(tracker, never()).recordEntry(incomingCow);
     }
 }

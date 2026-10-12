@@ -194,4 +194,58 @@ class PluginConfigCompatibilityTest {
         assertThat(pluginConfig.getResolvedEntityLimit(EntityType.CHICKEN)).isEqualTo(5);
         verify(logger, never()).warning(contains("entities.limits.BIRDS"));
     }
+
+    @Test
+    @DisplayName("Should apply a shared group total without replacing individual species caps")
+    void shouldLoadOptionalSharedGroupTotals() {
+        when(config.getConfigurationSection("entities.entity-groups"))
+                .thenReturn(new MemoryConfiguration().createSection("entities.entity-groups", Map.of(
+                        "LIVESTOCK", List.of("cow", "sheep", "pig")
+                )));
+        when(config.getConfigurationSection("entities.limits"))
+                .thenReturn(new MemoryConfiguration().createSection("entities.limits", Map.of(
+                        "livestock", 16,
+                        "villager", 8
+                )));
+        when(config.getConfigurationSection("entities.group-total-limits"))
+                .thenReturn(new MemoryConfiguration().createSection("entities.group-total-limits", Map.of(
+                        "livestock", 48
+                )));
+
+        pluginConfig.reload();
+
+        assertThat(pluginConfig.getResolvedEntityLimit(EntityType.COW)).isEqualTo(16);
+        assertThat(pluginConfig.getResolvedEntityLimit(EntityType.SHEEP)).isEqualTo(16);
+        assertThat(pluginConfig.getResolvedEntityLimit(EntityType.VILLAGER)).isEqualTo(8);
+        assertThat(pluginConfig.getEntityGroupTotalLimit(EntityType.COW)).isEqualTo(48);
+        assertThat(pluginConfig.getEntityGroupTotalLimit(EntityType.SHEEP)).isEqualTo(48);
+        assertThat(pluginConfig.getEntityGroupTotalLimit(EntityType.VILLAGER)).isNull();
+        assertThat(pluginConfig.getEntityGroupTotalMembers(EntityType.PIG))
+                .containsExactlyInAnyOrder(EntityType.COW, EntityType.SHEEP, EntityType.PIG);
+        assertThat(pluginConfig.getResolvedEntityTypes())
+                .contains(EntityType.COW, EntityType.SHEEP, EntityType.PIG, EntityType.VILLAGER);
+    }
+
+    @Test
+    @DisplayName("Should track group-only animals and ignore unknown shared cap keys")
+    void shouldTrackGroupOnlyLimits() {
+        when(config.getConfigurationSection("entities.entity-groups"))
+                .thenReturn(new MemoryConfiguration().createSection("entities.entity-groups", Map.of(
+                        "LIVESTOCK", List.of("COW", "SHEEP")
+                )));
+        when(config.getConfigurationSection("entities.group-total-limits"))
+                .thenReturn(new MemoryConfiguration().createSection("entities.group-total-limits", Map.of(
+                        "LIVESTOCK", 24,
+                        "NOT_A_GROUP", 9
+                )));
+
+        pluginConfig.reload();
+
+        assertThat(pluginConfig.getResolvedEntityLimit(EntityType.COW)).isNull();
+        assertThat(pluginConfig.getEntityGroupTotalLimit(EntityType.COW)).isEqualTo(24);
+        assertThat(pluginConfig.getResolvedEntityTypes())
+                .containsExactlyInAnyOrder(EntityType.COW, EntityType.SHEEP);
+        assertThat(pluginConfig.getEntityGroupTotalLimits()).doesNotContainKey("NOT_A_GROUP");
+        verify(logger).warning(contains("Unknown entity group 'NOT_A_GROUP'"));
+    }
 }

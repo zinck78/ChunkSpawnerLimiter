@@ -23,6 +23,24 @@ import static org.mockito.Mockito.when;
 class EntityChunkTrackerTest {
 
     @Test
+    @DisplayName("Lazy tracker never registers entities or performs any periodic work")
+    void shouldDisableAllMovementTrackingWhenLazy() {
+        Plugin plugin = mock(Plugin.class);
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = EntityChunkTracker.disabled(plugin, manager);
+        Entity cow = mock(Entity.class);
+
+        tracker.recordEntry(cow);
+        tracker.recordExit(cow);
+        tracker.pollEntityMovements();
+        tracker.reconcileEntities(List.of(cow));
+
+        assertThat(tracker.isEnabled()).isFalse();
+        assertThat(tracker.getTrackedCount()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(plugin, cow);
+    }
+
+    @Test
     @DisplayName("Should bound tracked entity work per poll")
     void shouldBoundTrackedEntityWorkPerPoll() {
         CounterDataManager manager = new CounterDataManager();
@@ -136,6 +154,79 @@ class EntityChunkTrackerTest {
         tracker.recordEntry(player);
 
         assertThat(tracker.getTrackedCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("Should still poll a mob that leaves and re-enters before its old ticket is consumed")
+    void shouldReusePendingTicketAfterRapidReentry() {
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = new EntityChunkTracker(
+                mock(Plugin.class), manager, entity -> true, 40L, 1, false);
+        World world = mock(World.class);
+        Entity entity = entity(world, EntityType.COW, 1, 1);
+        ChunkCoord oldCoord = ChunkCoord.from(world, 1, 1);
+        ChunkCoord newCoord = ChunkCoord.from(world, 2, 2);
+        manager.getCounterData(oldCoord).setEntityCount(EntityType.COW, 1);
+
+        tracker.recordEntry(entity);
+        tracker.recordExit(entity);
+        tracker.recordEntry(entity);
+
+        Location moved = mock(Location.class);
+        Chunk destinationChunk = chunk(world, 2, 2);
+        when(moved.getChunk()).thenReturn(destinationChunk);
+        when(entity.getLocation()).thenReturn(moved);
+
+        tracker.pollEntityMovements();
+
+        assertThat(tracker.getTrackedCount()).isOne();
+        assertThat(manager.getCounterData(oldCoord).getEntityCount(EntityType.COW)).isZero();
+        assertThat(manager.getCounterData(newCoord).getEntityCount(EntityType.COW)).isOne();
+    }
+
+    @Test
+    @DisplayName("Should inspect one tracked mob just once in each scheduled poll")
+    void shouldNotPollSmallPopulationRepeatedly() {
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = new EntityChunkTracker(
+                mock(Plugin.class), manager, entity -> true, 40L, 256, false);
+        World world = mock(World.class);
+        Entity cow = entity(world, EntityType.COW, 1, 1);
+        tracker.recordEntry(cow);
+
+        tracker.pollEntityMovements();
+
+        org.mockito.Mockito.verify(cow, org.mockito.Mockito.times(1)).isDead();
+        assertThat(tracker.getTrackedCount()).isOne();
+    }
+
+    @Test
+    @DisplayName("Should handle bulk entity exits without leaving stale queue entries")
+    void shouldHandleBulkExitedEntitiesWithoutQueueSearch() {
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = new EntityChunkTracker(
+                mock(Plugin.class), manager, entity -> true, 40L, 256, false);
+        World world = mock(World.class);
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+
+        for (int i = 0; i < 600; i++) {
+            Entity entity = entity(world, EntityType.COW, i, 0);
+            tracker.recordEntry(entity);
+            tracker.recordExit(entity);
+        }
+
+        assertThat(tracker.getTrackedCount()).isZero();
+        tracker.pollEntityMovements();
+        tracker.pollEntityMovements();
+        tracker.pollEntityMovements();
+        assertThat(tracker.getTrackedCount()).isZero();
+
+        // A new mob's ticket must not be lost after the stale queue drains.
+        Entity next = entity(world, EntityType.COW, 1, 1);
+        tracker.recordEntry(next);
+        assertThat(tracker.getTrackedCount()).isOne();
+        tracker.pollEntityMovements();
+        assertThat(tracker.getTrackedCount()).isOne();
     }
 
     private Entity entity(World world, EntityType type, int chunkX, int chunkZ) {
