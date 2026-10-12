@@ -65,6 +65,7 @@ class NamedPriorityEnforcerTest {
         when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(16);
         when(config.getResolvedEntityLimit(EntityType.SHEEP)).thenReturn(16);
         when(config.getResolvedEntityTypes()).thenReturn(Set.of(EntityType.COW, EntityType.SHEEP));
+        when(config.hasResolvedEntityLimit(EntityType.SHEEP)).thenReturn(true);
         when(config.getEntityGroupTotalLimits()).thenReturn(Map.of("LIVESTOCK", 3));
         when(config.getEntityGroupMembers("LIVESTOCK"))
                 .thenReturn(Set.of(EntityType.COW, EntityType.SHEEP));
@@ -105,6 +106,7 @@ class NamedPriorityEnforcerTest {
         PluginConfig config = mock(PluginConfig.class);
         when(config.shouldTrimExistingOverflow()).thenReturn(true);
         when(config.getResolvedEntityTypes()).thenReturn(Set.of(EntityType.COW));
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
         when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(16);
         when(config.getEntityGroupTotalLimits()).thenReturn(Map.of());
         when(config.getIgnoreMetadata()).thenReturn(List.of());
