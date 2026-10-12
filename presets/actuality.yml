@@ -4,7 +4,10 @@
 #   - at most 16 of any individual listed livestock type
 #   - at most 48 livestock across all listed types COMBINED
 #   - at most 8 villagers (separate from the livestock allowance)
-# Existing excess animals/villagers are never deleted by this preset.
+# STRONGER POLICY: if a chunk contains more than its population cap,
+# excess residents ARE removed on load/movement/name-tagging, unnamed first.
+# If 17 out of 17 cows are named, one named cow will be removed.
+# Removal does not drop loot or refund name tags. Back up populated worlds.
 # Wandering traders and hostile types are not in this list.
 # MythicMobs based on a listed animal type still count toward these caps.
 enabled: true
@@ -57,10 +60,13 @@ entities:
   compatibility:
     defer-count-until-next-tick: false
   preservation:
-    named-entities: true
+    # Name-tagged mobs have cleanup priority, not absolute immunity.
+    named-entities: false
     raid-entities: true
   removal:
     mode: prevent
+    # Actuality addition: opt in to trimming existing population overflows.
+    trim-existing-overflow: true
     armor-stand:
       drop: false
       log-warnings: false
@@ -96,14 +102,15 @@ worlds:
     - instances
 
 notifications:
-  enabled: false
+  enabled: true
   cooldown-seconds: 3
   method:
     title: false
-    message: false
+    message: true
   messages:
-    entities-blocked: "&7Too many of that mob in this chunk."
-    entities-removed: "&7Entity removed."
+    entities-blocked: "&cAnimal population limit reached in this chunk. Try expanding your farm." 
+    breeding-blocked: "&cBreeding blocked: &e{type} &7population is &e{count}/{limit}&7. Move some animals to another chunk."
+    entities-removed: "&ePopulation limit enforced: &f{count} {type} &eremoved (unnamed first)."
     reload-complete: "&aEntity limits reloaded."
     max-blocks: "&cBlock cap reached."
     max-blocks-title: "&cBlock cap reached."
