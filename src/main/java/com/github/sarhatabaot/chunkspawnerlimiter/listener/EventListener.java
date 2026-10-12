@@ -145,17 +145,21 @@ public class EventListener implements Listener {
 
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
         final CounterData counterData = counterDataManager.getCounterData(chunkCoord);
-        final int existingEntityCount = counterDataManager.synchronizeEntityCount(chunk, entityType, entity);
+        final var counts = counterDataManager.synchronizeEntityCounts(
+                chunk, entityType, pluginConfig.getEntityGroupTotalMembers(entityType), entity);
 
         final Integer entityTypeLimit = pluginConfig.getResolvedEntityLimit(entityType);
+        final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(entityType);
 
         boolean withinTypeLimit = entityTypeLimit == null ||
-            Checks.isUnderOrEqualToLimit(existingEntityCount, entityTypeLimit);
+            Checks.isUnderOrEqualToLimit(counts.typeCount(), entityTypeLimit);
+        boolean withinGroupLimit = groupTotalLimit == null ||
+            Checks.isUnderOrEqualToLimit(counts.groupCount(), groupTotalLimit);
 
-        if (withinTypeLimit) {
+        if (withinTypeLimit && withinGroupLimit) {
             CSLLogger.debug(() -> "%s entity under entity limits (type: %d/%s)".formatted(
                 entityType.name(),
-                existingEntityCount,
+                counts.typeCount(),
                 entityTypeLimit != null ? String.valueOf(entityTypeLimit) : "unlimited"
             ));
 
@@ -348,18 +352,29 @@ public class EventListener implements Listener {
             final Integer entityTypeLimit = pluginConfig.getResolvedEntityLimit(entityType);
 
             int actualCount = 0;
+            int actualGroupCount = 0;
+            final var groupMembers = pluginConfig.getEntityGroupTotalMembers(entityType);
+            final Integer groupTotalLimit = pluginConfig.getEntityGroupTotalLimit(entityType);
             for (Entity e : chunk.getEntities()) {
-                if (e.getType() == entityType && e.isValid() && !e.isDead()) actualCount++;
+                if (!e.isValid() || e.isDead()) continue;
+                if (e.getType() == entityType) actualCount++;
+                if (groupMembers.contains(e.getType())) actualGroupCount++;
             }
 
             // Sync counter from actual chunk state (each stack = 1, not N).
             counterData.setEntityCount(entityType, actualCount);
 
-            if (entityTypeLimit != null && actualCount > entityTypeLimit) {
-                int toRemove = actualCount - entityTypeLimit;
+            final int typeExcess = entityTypeLimit == null ? 0 : Math.max(0, actualCount - entityTypeLimit);
+            final int groupExcess = groupTotalLimit == null ? 0 : Math.max(0, actualGroupCount - groupTotalLimit);
+            if (typeExcess > 0 || groupExcess > 0) {
+                // Only the newly spawned type is eligible; never delete existing
+                // members of another species to make room for a new spawn.
+                int toRemove = Math.max(typeExcess, groupExcess);
                 final int fActualCount = actualCount;
-                CSLLogger.debug(() -> "Stacking compat: chunk %s has %d %s, limit %d, removing %d"
-                        .formatted(chunkCoord, fActualCount, entityType.name(), entityTypeLimit, toRemove));
+                CSLLogger.debug(() -> "Stacking compat: chunk %s has %d %s; type limit %s, shared group limit %s; rejecting up to %d"
+                        .formatted(chunkCoord, fActualCount, entityType.name(),
+                                entityTypeLimit == null ? "unlimited" : entityTypeLimit,
+                                groupTotalLimit == null ? "unlimited" : groupTotalLimit, toRemove));
 
                 int removed = 0;
                 for (Entity e : chunk.getEntities()) {
