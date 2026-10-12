@@ -40,6 +40,28 @@ public class NotificationService {
     }
     
     /**
+     * Show a population limit to the breeder, including the actual
+     * species/group count, instead of allowing silent failed breeding.
+     * Messages use the same per-player cooldown as other notifications.
+     */
+    public void notifyBreedingBlocked(Player breeder, Chunk chunk, EntityType type,
+                                      int count, int limit) {
+        if (!config.shouldNotifyPlayersInChunk()) return;
+        String message = config.getBreedingBlockedMessage()
+                .replace("{type}", type.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' '))
+                .replace("{count}", String.valueOf(count))
+                .replace("{limit}", String.valueOf(limit));
+        if (breeder != null) {
+            if (shouldNotifyPlayer(breeder)) {
+                sendNotification(breeder, message);
+                updateLastNotification(breeder);
+            }
+        } else {
+            notifyPlayersInChunk(chunk, message);
+        }
+    }
+
+    /**
      * Notify players in a chunk that entities were removed
      */
     public void notifyEntitiesRemoved(Chunk chunk, EntityType type, int count) {
