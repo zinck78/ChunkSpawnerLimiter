@@ -592,6 +592,16 @@ public class PluginConfig {
     }
 
     /**
+     * Optional movement polling (backwards-compatible default). Disabling this
+     * avoids UUID bookkeeping and repeating tasks; spawn/breeding checks still
+     * recount the live chunk when needed. Cross-chunk arrivals may remain over
+     * capacity until the next load/name-tag check.
+     */
+    public boolean isEntityMovementTrackingEnabled() {
+        return config.getBoolean("entities.movement-tracking.enabled", true);
+    }
+
+    /**
      * Checks if raid-related entities should be preserved from removal.
      *
      * @return true if raid entities should be preserved, false otherwise
