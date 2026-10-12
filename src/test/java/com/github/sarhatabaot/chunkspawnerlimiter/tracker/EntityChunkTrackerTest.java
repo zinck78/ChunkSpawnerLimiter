@@ -23,6 +23,24 @@ import static org.mockito.Mockito.when;
 class EntityChunkTrackerTest {
 
     @Test
+    @DisplayName("Lazy tracker never registers entities or performs any periodic work")
+    void shouldDisableAllMovementTrackingWhenLazy() {
+        Plugin plugin = mock(Plugin.class);
+        CounterDataManager manager = new CounterDataManager();
+        EntityChunkTracker tracker = EntityChunkTracker.disabled(plugin, manager);
+        Entity cow = mock(Entity.class);
+
+        tracker.recordEntry(cow);
+        tracker.recordExit(cow);
+        tracker.pollEntityMovements();
+        tracker.reconcileEntities(List.of(cow));
+
+        assertThat(tracker.isEnabled()).isFalse();
+        assertThat(tracker.getTrackedCount()).isZero();
+        org.mockito.Mockito.verifyNoInteractions(plugin, cow);
+    }
+
+    @Test
     @DisplayName("Should bound tracked entity work per poll")
     void shouldBoundTrackedEntityWorkPerPoll() {
         CounterDataManager manager = new CounterDataManager();
