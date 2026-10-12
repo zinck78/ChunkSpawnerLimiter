@@ -5,7 +5,9 @@
 #   - at most 48 livestock across all listed types COMBINED
 #   - at most 8 villagers (separate from the livestock allowance)
 # STRONGER POLICY: if a chunk contains more than its population cap,
-# excess residents ARE removed on load/movement/name-tagging, unnamed first.
+# excess residents ARE removed on load/name-tagging, unnamed first.
+# Cross-chunk movement may temporarily exceed these limits until a later
+# chunk load or other event; new breeding/spawns are blocked immediately.
 # If 17 out of 17 cows are named, one named cow will be removed.
 # Removal does not drop loot or refund name tags. Back up populated worlds.
 # Wandering traders and hostile types are not in this list.
@@ -57,6 +59,10 @@ entities:
     VILLAGER: 8
   group-total-limits:
     LIVESTOCK: 48
+  # On-demand mode: disable all periodic entity movement polling and UUID
+  # bookkeeping. New spawns and breeding still use live chunk counts.
+  movement-tracking:
+    enabled: false
   compatibility:
     defer-count-until-next-tick: false
   preservation:
