@@ -4,6 +4,7 @@ package com.github.sarhatabaot.chunkspawnerlimiter;
 import com.github.sarhatabaot.chunkspawnerlimiter.command.AdminCommand;
 import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterDataManager;
 import com.github.sarhatabaot.chunkspawnerlimiter.listener.ChunkListener;
+import com.github.sarhatabaot.chunkspawnerlimiter.listener.BreedingListener;
 import com.github.sarhatabaot.chunkspawnerlimiter.listener.EventListener;
 import com.github.sarhatabaot.chunkspawnerlimiter.listener.DespawnListener;
 import com.github.sarhatabaot.chunkspawnerlimiter.listener.EntityTransformListener;
@@ -84,8 +85,10 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.chunkListener = new ChunkListener(this, pluginConfig, counterDataManager,
                 removalTaskManager, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(chunkListener, this);
-        pluginManager.registerEvents(new EventListener(this, pluginConfig, counterDataManager,
-                notificationService, entityChunkTracker, priorityEnforcer), this);
+        EventListener eventListener = new EventListener(this, pluginConfig, counterDataManager,
+                notificationService, entityChunkTracker, priorityEnforcer);
+        pluginManager.registerEvents(eventListener, this);
+        BreedingListener.registerIfSupported(this, eventListener);
         DespawnListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
         EntityTransformListener.registerIfSupported(this, pluginConfig, counterDataManager, entityChunkTracker);
 
