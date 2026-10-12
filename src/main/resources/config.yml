@@ -37,6 +37,13 @@ entities:
     ANIMALS: 50
     MONSTERS: 50
     NPC: 50
+  # Optional shared total per chunk across ALL members of an entity group.
+  # Unlike entities.limits.ANIMALS (50 of EACH species), the following would
+  # allow 48 animals TOTAL across cow + sheep + pig + chicken combined.
+  # Separate per-type limits are still applied at the same time.
+  # group-total-limits:
+  #   ANIMALS: 48
+  group-total-limits: {}
   compatibility:
     # When enabled, CSL waits one tick before counting freshly spawned entities.
     # This lets stacking plugins such as WildStacker merge and discard transient
