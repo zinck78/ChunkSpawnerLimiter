@@ -39,7 +39,8 @@ public final class NamedPriorityEnforcer {
     private final CounterDataManager counters;
     private final EntityChunkTracker tracker;
     private final NotificationService notifications;
-    private final Set<ChunkCoord> pending = new HashSet<>();
+    private final Set<ChunkCoord> pending = new java.util.LinkedHashSet<>();
+    private boolean drainScheduled;
 
     public NamedPriorityEnforcer(Plugin plugin, PluginConfig config,
                                  CounterDataManager counters, EntityChunkTracker tracker,
@@ -51,17 +52,38 @@ public final class NamedPriorityEnforcer {
         this.notifications = notifications;
     }
 
-    /** De-dupe multiple moves into one chunk, and do not scan while it is unloaded. */
+    /**
+     * Queue a one-off population check. Deduplicate incoming chunk load
+     * events and batch at most max-chunks-per-tick to avoid a burst of hundreds
+     * of synchronous entity scans during fast exploration or plugin reload.
+     */
     public void queue(ChunkCoord coord) {
         if (!config.shouldTrimExistingOverflow() || !pending.add(coord)) return;
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            pending.remove(coord);
+        scheduleDrain();
+    }
+
+    private void scheduleDrain() {
+        if (drainScheduled) return;
+        drainScheduled = true;
+        plugin.getServer().getScheduler().runTask(plugin, this::drain);
+    }
+
+    private void drain() {
+        drainScheduled = false;
+        int max = config.getInspectionMaxChunksPerTick();
+        java.util.Iterator<ChunkCoord> iterator = pending.iterator();
+        for (int scanned = 0; scanned < max && iterator.hasNext(); scanned++) {
+            ChunkCoord coord = iterator.next();
+            iterator.remove();
             Chunk chunk = coord.getChunk();
             if (chunk != null && chunk.isLoaded()
                     && !config.isWorldDisabled(chunk.getWorld().getName())) {
                 enforceChunk(chunk);
             }
-        });
+        }
+        if (!pending.isEmpty()) {
+            scheduleDrain();
+        }
     }
 
     /**
