@@ -108,9 +108,9 @@ notifications:
     title: false
     message: true
   messages:
-    entities-blocked: "&cAnimal population limit reached in this chunk. Try expanding your farm." 
-    breeding-blocked: "&cBreeding blocked: &e{scope} &7is full (&e{count}/{limit}&7). Move animals to another chunk."
-    entities-removed: "&ePopulation limit enforced: &f{count} {type} &eremoved (unnamed first)."
+    entities-blocked: "&cEntity spawn limit reached: &e{type}&c cannot spawn here." 
+    breeding-blocked: "&cSpawn limit reached: &e{scope} &7(&e{count}/{limit}&7). Move mobs to another chunk."
+    entities-removed: "&eEntity population limit enforced: &f{count} {type} &eremoved (unnamed first)."
     reload-complete: "&aEntity limits reloaded."
     max-blocks: "&cBlock cap reached."
     max-blocks-title: "&cBlock cap reached."
