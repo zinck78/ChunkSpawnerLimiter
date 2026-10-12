@@ -749,12 +749,12 @@ public class PluginConfig {
      */
     public String getEntitiesBlockedMessage() {
         return config.getString("notifications.messages.entities-blocked", 
-            "&7Blocked {count} {type} from spawning in your chunk.");
+            "&cEntity spawn limit reached: &e{type}&c cannot spawn here.");
     }
 
     public String getBreedingBlockedMessage() {
         return config.getString("notifications.messages.breeding-blocked",
-                "&cBreeding blocked: &e{scope} &7is full (&e{count}/{limit}&7). Move animals to another chunk.");
+                "&cSpawn limit reached: &e{scope} &7(&e{count}/{limit}&7). Move mobs to another chunk.");
     }
 
     /**
