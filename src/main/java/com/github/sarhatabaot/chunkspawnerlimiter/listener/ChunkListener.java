@@ -63,8 +63,14 @@ public class ChunkListener implements Listener {
     private void initializeChunk(@NotNull Chunk chunk) {
         final ChunkCoord chunkCoord = ChunkCoord.from(chunk);
 
-        addEntityLimits(chunk, chunkCoord);
-        if (priorityEnforcer != null) {
+        // Do not build a redundant per-chunk entity cache or register every
+        // animal when only spawn/breeding checks are wanted. Those checks count
+        // the actual live entities at the time of the event.
+        if (chunkTracker.isEnabled()) {
+            addEntityLimits(chunk, chunkCoord);
+        }
+        // The one-time loaded-population trim remains opt-in and event-driven.
+        if (priorityEnforcer != null && pluginConfig.shouldTrimExistingOverflow()) {
             priorityEnforcer.queue(chunkCoord);
         }
         
