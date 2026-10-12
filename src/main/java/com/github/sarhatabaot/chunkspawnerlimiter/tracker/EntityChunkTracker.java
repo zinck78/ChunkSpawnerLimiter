@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
+import java.util.function.Consumer;
 
 /**
  * Tracks which chunk each entity is in so that when an entity moves between
@@ -38,6 +39,11 @@ public class EntityChunkTracker {
     private final Plugin plugin;
     private final long intervalTicks;
     private final int maxEntitiesPerPoll;
+    private Consumer<ChunkCoord> arrivalHandler = coord -> { };
+
+    public void setArrivalHandler(Consumer<ChunkCoord> arrivalHandler) {
+        this.arrivalHandler = arrivalHandler;
+    }
 
     public EntityChunkTracker(Plugin plugin,
                               CounterDataManager counterDataManager,
@@ -147,6 +153,7 @@ public class EntityChunkTracker {
             counterDataManager.decrementEntityIfPresent(previous.chunkCoord(), previous.type());
             counterDataManager.getCounterData(currentCoord).incrementEntity(currentType);
             trackedEntities.put(uuid, new TrackedEntity(currentCoord, currentType, entity));
+            arrivalHandler.accept(currentCoord);
         }
         return true;
     }
@@ -177,6 +184,7 @@ public class EntityChunkTracker {
                 counterDataManager.decrementEntityIfPresent(previous.chunkCoord(), previous.type());
                 counterDataManager.getCounterData(currentCoord).incrementEntity(currentType);
                 trackedEntities.put(uuid, new TrackedEntity(currentCoord, currentType, entity));
+                arrivalHandler.accept(currentCoord);
                 movesDetected++;
             }
         }
