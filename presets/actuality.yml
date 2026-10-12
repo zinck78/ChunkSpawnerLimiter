@@ -7,10 +7,10 @@
 # STRONGER POLICY: if a chunk contains more than its population cap,
 # excess residents ARE removed on load/name-tagging, unnamed first.
 # Cross-chunk movement may temporarily exceed these limits until a later
-# chunk load, name-tag action, or blocked breeding attempt. Breeding checks
-# trigger cleanup only if the EXISTING population already exceeds a cap;
-# reaching the cap exactly does not cause an animal to be removed.
-# New breeding/spawns are blocked immediately.
+# chunk load, name-tag action, or blocked spawn/breeding attempt. Any
+# rejected spawn triggers cleanup ONLY when the EXISTING population is
+# already above a cap. Reaching the cap exactly blocks the newcomer but
+# never removes a resident. No periodic entity scans or movement polling.
 # If 17 out of 17 cows are named, one named cow will be removed.
 # Removal does not drop loot or refund name tags. Back up populated worlds.
 # Wandering traders and hostile types are not in this list.
