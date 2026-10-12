@@ -25,6 +25,41 @@ It checks new spawns and placements, and can clean up excess existing entities w
 * Recheck loaded chunks periodically when inspections are enabled.
 * Target Minecraft versions from 1.8.8 through 1.21.10; the build requires Java 21.
 
+## Shared entity group totals (optional)
+
+The normal `entities.limits` group setting still caps **each entity type individually**.
+For example, `LIVESTOCK: 16` allows 16 cows and 16 sheep.
+
+You can now add an additional, combined cap:
+
+```yaml
+entities:
+  entity-groups:
+    LIVESTOCK: [COW, SHEEP, PIG, CHICKEN]
+  limits:
+    LIVESTOCK: 16
+    VILLAGER: 8
+  group-total-limits:
+    LIVESTOCK: 48
+  removal:
+    mode: prevent
+```
+
+With this example, the chunk allows up to **16 of any listed species**
+and **48 across those species combined**, plus up to **8 villagers**.
+An animal belonging to `LIVESTOCK` counts toward the aggregate even if
+it also has a direct type limit. The group total is opt-in; configs without
+`group-total-limits` retain existing behavior.
+
+Use `mode: prevent` to protect existing animals. It blocks new spawns when
+a chunk is full; it does **not** delete existing mobs or strictly prevent
+transported animals from crossing chunk boundaries. A movement poll updates
+the count afterward. Animals already over a limit can remain until a player
+moves or removes them.
+
+For an Actuality-specific preset, see `presets/actuality.yml`. This is an
+example to be copied into the plugin data folder, not automatically enabled.
+
 ## Configuration
 
 Edit `plugins/ChunkSpawnerLimiter/config.yml` and run `/csl reload` to apply changes.
