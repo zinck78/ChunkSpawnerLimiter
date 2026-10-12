@@ -156,4 +156,37 @@ class CounterDataManagerTest {
             assertThat(manager.getCounterData(coord).getEntityCount(EntityType.ZOMBIE)).isOne();
         }
     }
+
+    @Test
+    @DisplayName("Should count mixed livestock together while excluding the incoming mob")
+    void shouldCountSharedGroupInOneChunkPass() {
+        CounterDataManager manager = new CounterDataManager();
+        Chunk chunk = mock(Chunk.class);
+        World world = mock(World.class);
+        Entity incomingCow = mock(Entity.class);
+        Entity existingCow = mock(Entity.class);
+        Entity existingSheep = mock(Entity.class);
+        Entity existingVillager = mock(Entity.class);
+
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.getX()).thenReturn(3);
+        when(chunk.getZ()).thenReturn(4);
+        when(incomingCow.getType()).thenReturn(EntityType.COW);
+        when(existingCow.getType()).thenReturn(EntityType.COW);
+        when(existingSheep.getType()).thenReturn(EntityType.SHEEP);
+        when(existingVillager.getType()).thenReturn(EntityType.VILLAGER);
+        when(chunk.getEntities()).thenReturn(new Entity[]{
+                incomingCow, existingCow, existingSheep, existingVillager
+        });
+
+        var counts = manager.synchronizeEntityCounts(
+                chunk, EntityType.COW,
+                java.util.Set.of(EntityType.COW, EntityType.SHEEP), incomingCow);
+
+        assertThat(counts.typeCount()).isOne();
+        assertThat(counts.groupCount()).isEqualTo(2);
+        assertThat(manager.getCounterData(ChunkCoord.from(chunk))
+                .getEntityCount(EntityType.COW)).isOne();
+    }
 }
