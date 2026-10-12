@@ -362,4 +362,52 @@ class EventListenerTest {
         verify(chunkTracker).recordEntry(entity);
         verify(chunkTracker, never()).recordExit(entity);
     }
+
+    @Test
+    @DisplayName("Should cancel a new cow when mixed livestock has reached the shared cap")
+    void shouldPreventSpawnWhenSharedGroupIsFull() {
+        Plugin plugin = mock(Plugin.class);
+        PluginConfig config = mock(PluginConfig.class);
+        NotificationService notifications = mock(NotificationService.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        CounterDataManager counters = new CounterDataManager();
+        EventListener listener = new EventListener(plugin, config, counters, notifications, tracker);
+        EntitySpawnEvent event = mock(EntitySpawnEvent.class);
+        Entity incomingCow = mock(Entity.class);
+        Entity existingCow = mock(Entity.class);
+        Entity existingSheep = mock(Entity.class);
+        Chunk chunk = mock(Chunk.class);
+        World world = mock(World.class);
+        Location location = mock(Location.class);
+
+        when(event.getLocation()).thenReturn(location);
+        when(event.getEntity()).thenReturn(incomingCow);
+        when(incomingCow.getType()).thenReturn(EntityType.COW);
+        when(incomingCow.getLocation()).thenReturn(location);
+        when(existingCow.getType()).thenReturn(EntityType.COW);
+        when(existingSheep.getType()).thenReturn(EntityType.SHEEP);
+        when(location.getWorld()).thenReturn(world);
+        when(location.getChunk()).thenReturn(chunk);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(chunk.getX()).thenReturn(1);
+        when(chunk.getZ()).thenReturn(2);
+        when(chunk.isLoaded()).thenReturn(true);
+        when(chunk.getEntities()).thenReturn(new Entity[]{existingCow, existingSheep, incomingCow});
+
+        when(config.isEntitySpawnWatch()).thenReturn(true);
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getResolvedEntityLimit(EntityType.COW)).thenReturn(16);
+        when(config.getEntityGroupTotalLimit(EntityType.COW)).thenReturn(2);
+        when(config.getEntityGroupTotalMembers(EntityType.COW))
+                .thenReturn(java.util.Set.of(EntityType.COW, EntityType.SHEEP));
+        when(config.getRemovalMode()).thenReturn(new Prevent(null));
+
+        listener.onEntitySpawn(event);
+
+        verify(event).setCancelled(true);
+        verify(notifications).notifyEntitiesBlocked(eq(chunk), eq(EntityType.COW), eq(1));
+        verify(tracker, never()).recordEntry(incomingCow);
+    }
 }
