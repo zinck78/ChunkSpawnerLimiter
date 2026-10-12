@@ -68,7 +68,7 @@ class EventListenerTest {
         World world = mock(World.class);
         Chunk chunk = mock(Chunk.class);
         Location location = mock(Location.class);
-        Entity calf = mock(org.bukkit.entity.LivingEntity.class);
+        org.bukkit.entity.LivingEntity calf = mock(org.bukkit.entity.LivingEntity.class);
         Entity[] current = new Entity[existingCows];
         for (int i = 0; i < existingCows; i++) {
             Entity cow = mock(Entity.class);
