@@ -59,7 +59,7 @@ public class CounterDataManager {
             }
             EntityType existingType = entity.getType();
             if (existingType == type) typeCount++;
-            if (groupMembers.contains(existingType)) groupCount++;
+            if (groupMembers != null && groupMembers.contains(existingType)) groupCount++;
         }
 
         getCounterData(ChunkCoord.from(chunk)).setEntityCount(type, typeCount);
