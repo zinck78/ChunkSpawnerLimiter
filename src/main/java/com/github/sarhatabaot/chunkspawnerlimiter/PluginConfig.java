@@ -754,7 +754,7 @@ public class PluginConfig {
 
     public String getBreedingBlockedMessage() {
         return config.getString("notifications.messages.breeding-blocked",
-                "&cBreeding blocked: &e{type} &7population has reached &e{count}/{limit}&7 in this chunk.");
+                "&cBreeding blocked: &e{scope} &7is full (&e{count}/{limit}&7). Move animals to another chunk.");
     }
 
     /**
