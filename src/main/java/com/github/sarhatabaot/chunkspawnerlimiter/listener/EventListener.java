@@ -89,7 +89,7 @@ public class EventListener implements Listener {
         Player breeder = breederEntity instanceof Player player ? player : null;
         int count = speciesFull ? counts.typeCount() : counts.groupCount();
         int cap = speciesFull ? speciesCap : groupCap;
-        notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap);
+        notificationService.notifyBreedingBlocked(breeder, chunk, type, count, cap, !speciesFull);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -250,7 +250,7 @@ public class EventListener implements Listener {
                 && creatureEvent.getSpawnReason() == CreatureSpawnEvent.SpawnReason.BREEDING) {
             int count = !withinTypeLimit ? counts.typeCount() : counts.groupCount();
             int cap = !withinTypeLimit ? entityTypeLimit : groupTotalLimit;
-            notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap);
+            notificationService.notifyBreedingBlocked(null, chunk, entityType, count, cap, withinTypeLimit);
         } else {
             notificationService.notifyEntitiesBlocked(chunk, entityType, 1);
         }
