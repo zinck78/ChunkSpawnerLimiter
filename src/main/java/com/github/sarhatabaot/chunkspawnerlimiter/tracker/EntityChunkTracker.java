@@ -121,6 +121,7 @@ public class EntityChunkTracker {
      * can sometimes refer to the same entity. Never double count its UUID.
      */
     public boolean recordEntryIfNew(@NotNull Entity entity) {
+        if (!enabled || !isTracked.test(entity)) return false;
         return recordEntryIfNew(entity, ChunkCoord.from(entity));
     }
 
