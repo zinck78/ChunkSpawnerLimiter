@@ -113,10 +113,19 @@ public class EntityChunkTracker {
      * Record that an entity exists in a specific chunk (call on spawn/world-entry).
      */
     public void recordEntry(@NotNull Entity entity) {
-        if (!enabled || !isTracked.test(entity)) return;
+        recordEntryIfNew(entity);
+    }
+
+    /**
+     * Register loaded entities idempotently: entity load and reload bootstrap
+     * can sometimes refer to the same entity. Never double count its UUID.
+     */
+    public boolean recordEntryIfNew(@NotNull Entity entity) {
+        if (!enabled || !isTracked.test(entity)) return false;
         UUID uuid = entity.getUniqueId();
-        trackedEntities.put(uuid, TrackedEntity.from(entity));
+        TrackedEntity old = trackedEntities.put(uuid, TrackedEntity.from(entity));
         pollingQueue.add(uuid);
+        return old == null;
     }
 
     /**
