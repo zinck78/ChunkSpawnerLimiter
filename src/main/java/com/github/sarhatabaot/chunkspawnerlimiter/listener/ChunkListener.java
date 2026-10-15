@@ -29,6 +29,13 @@ public class ChunkListener implements Listener {
     private final EntityChunkTracker chunkTracker;
     private final BlockScanner blockScanner;
     private final NamedPriorityEnforcer priorityEnforcer;
+    // When supported, entity lifecycle events initialize the tracker without
+    // forcing entity data to load from ChunkLoadEvent.
+    private boolean entityLoadEventsAvailable;
+
+    public void setEntityLoadEventsAvailable(boolean available) {
+        this.entityLoadEventsAvailable = available;
+    }
 
     public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
@@ -66,12 +73,14 @@ public class ChunkListener implements Listener {
         // Do not build a redundant per-chunk entity cache or register every
         // animal when only spawn/breeding checks are wanted. Those checks count
         // the actual live entities at the time of the event.
-        if (chunkTracker.isEnabled()) {
-            addEntityLimits(chunk, chunkCoord);
-        }
-        // The one-time loaded-population trim remains opt-in and event-driven.
-        if (priorityEnforcer != null && pluginConfig.shouldTrimExistingOverflow()) {
-            priorityEnforcer.queue(chunkCoord);
+        if (!entityLoadEventsAvailable) {
+            if (chunkTracker.isEnabled()) {
+                addEntityLimits(chunk, chunkCoord);
+            }
+            // Legacy fallback when entity lifecycle events are unavailable.
+            if (priorityEnforcer != null && pluginConfig.shouldTrimExistingOverflow()) {
+                priorityEnforcer.queue(chunkCoord);
+            }
         }
         
         // Scan blocks asynchronously on chunk load
@@ -114,6 +123,42 @@ public class ChunkListener implements Listener {
         }
     }
 
+    /**
+     * Called by EntitiesLoadEvent on modern servers. Uses the event-provided
+     * list instead of calling Chunk#getEntities() in the chunk-load callback.
+     * Other mob types (including bats) are never registered for movement.
+     */
+    public void onEntitiesLoaded(@NotNull Chunk chunk, @NotNull Iterable<Entity> entities) {
+        if (pluginConfig.isWorldDisabled(chunk.getWorld().getName())) return;
+        ChunkCoord coord = ChunkCoord.from(chunk);
+        boolean anyLimitedEntity = false;
+
+        for (Entity entity : entities) {
+            if (!Checks.shouldTrackEntity(entity, pluginConfig)) continue;
+            anyLimitedEntity = true;
+            if (chunkTracker.isEnabled() && entity.getType() == EntityType.VILLAGER
+                    && chunkTracker.recordEntryIfNew(entity)) {
+                counterDataManager.getCounterData(coord).incrementEntity(EntityType.VILLAGER);
+            }
+        }
+
+        // Preserve one-off population cleanup after the entities have loaded.
+        if (anyLimitedEntity && priorityEnforcer != null && pluginConfig.shouldTrimExistingOverflow()) {
+            priorityEnforcer.queue(coord);
+        }
+    }
+
+    /** Remove unloaded villagers from the bounded movement tracker. */
+    public void onEntitiesUnloaded(@NotNull Chunk chunk, @NotNull Iterable<Entity> entities) {
+        if (pluginConfig.isWorldDisabled(chunk.getWorld().getName()) || !chunkTracker.isEnabled()) return;
+        ChunkCoord coord = ChunkCoord.from(chunk);
+        for (Entity entity : entities) {
+            if (entity.getType() != EntityType.VILLAGER) continue;
+            chunkTracker.recordExit(entity);
+            counterDataManager.decrementEntityIfPresent(coord, EntityType.VILLAGER);
+        }
+    }
+
     public void rebuildLoadedChunks() {
         for (World world : plugin.getServer().getWorlds()) {
             if (pluginConfig.isWorldDisabled(world.getName())) {
@@ -121,6 +166,11 @@ public class ChunkListener implements Listener {
             }
             for (Chunk chunk : world.getLoadedChunks()) {
                 initializeChunk(chunk);
+                // A plugin reload can find entities already loaded. Never
+                // request a Chunk#getEntities() unless Paper says they are ready.
+                if (entityLoadEventsAvailable && EntityLoadBridge.areEntitiesLoaded(chunk)) {
+                    onEntitiesLoaded(chunk, java.util.Arrays.asList(chunk.getEntities()));
+                }
             }
         }
     }
