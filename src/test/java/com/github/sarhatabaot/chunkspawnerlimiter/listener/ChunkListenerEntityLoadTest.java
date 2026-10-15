@@ -11,6 +11,7 @@ import com.github.sarhatabaot.chunkspawnerlimiter.removal.RemovalTaskManager;
 import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
 import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
 import org.bukkit.Chunk;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.Server;
 import org.bukkit.entity.Entity;
@@ -49,6 +50,7 @@ class ChunkListenerEntityLoadTest {
         when(event.getWorld()).thenReturn(world);
         when(event.getChunk()).thenReturn(chunk);
         when(config.getRemovalMode()).thenReturn(mode);
+        when(config.getTrackedBlockMaterials()).thenReturn(Set.of(Material.STONE));
         when(config.shouldTrimExistingOverflow()).thenReturn(true);
         when(tracker.isEnabled()).thenReturn(true);
 
