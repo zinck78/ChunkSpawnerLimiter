@@ -16,6 +16,7 @@ import org.bukkit.entity.Villager;
 import org.bukkit.entity.Vehicle;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.plugin.Plugin;
 import org.junit.jupiter.api.Test;
@@ -148,6 +149,27 @@ class UntrackedEntityHotPathTest {
         listener.onBlockBreak(event);
 
         verify(data).decrementBlock(Material.STONE);
+    }
+
+    @Test
+    void unconfiguredBatSpawnNeverConsultsWorldOrSpawnLocation() {
+        PluginConfig config = mock(PluginConfig.class);
+        when(config.isEntitySpawnWatch()).thenReturn(true);
+        when(config.getEntityGroupTotalMembers(EntityType.BAT)).thenReturn(Set.of());
+        Bat bat = mock(Bat.class);
+        when(bat.getType()).thenReturn(EntityType.BAT);
+        EntitySpawnEvent event = mock(EntitySpawnEvent.class);
+        when(event.getEntity()).thenReturn(bat);
+
+        CounterDataManager counters = mock(CounterDataManager.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        EventListener listener = new EventListener(mock(Plugin.class), config, counters,
+                mock(NotificationService.class), tracker);
+        listener.onEntitySpawn(event);
+
+        verify(event, never()).getLocation();
+        verify(bat, never()).getLocation();
+        verifyNoInteractions(counters, tracker);
     }
 
 }
