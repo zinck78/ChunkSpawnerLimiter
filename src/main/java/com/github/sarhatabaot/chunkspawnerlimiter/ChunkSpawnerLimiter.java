@@ -104,8 +104,15 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
 
         // Loaded spawn chunks may predate plugin enable. Reconcile existing
         // overflow once, but never start periodic entity movement polling.
-        if (rebuildLoadedChunks ||
-                (pluginConfig.shouldTrimExistingOverflow() && !entityChunkTracker.isEnabled())) {
+        if (rebuildLoadedChunks) {
+            // Configuration reloads also refresh block counters for loaded chunks.
+            chunkListener.rebuildLoadedChunks();
+        } else if (chunkListener.hasEntityLoadEventsAvailable()) {
+            // POSTWORLD plugins may enable after spawn chunks already loaded.
+            // Bootstrap only existing entity data without forcing entity loading.
+            chunkListener.bootstrapAlreadyLoadedEntities();
+        } else if (pluginConfig.shouldTrimExistingOverflow() && !entityChunkTracker.isEnabled()) {
+            // Preserve the legacy lazy-mode initial overflow pass.
             chunkListener.rebuildLoadedChunks();
         }
     }
