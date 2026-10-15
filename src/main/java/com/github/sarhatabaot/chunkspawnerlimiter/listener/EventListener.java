@@ -193,6 +193,16 @@ public class EventListener implements Listener {
             return;
         }
 
+        // Fast-path: reject unconfigured entities (e.g. bats, monsters,
+        // drops) before any world lookup, chunk access or spawn-reason work.
+        // Only configured mobs proceed into a real per-chunk count.
+        final Entity entity = event.getEntity();
+        final EntityType entityType = entity.getType();
+        if (!Checks.shouldTrackEntity(entity, pluginConfig)) {
+            CSLLogger.debug(() -> "%s entity not in entity limits.".formatted(entityType.name()));
+            return;
+        }
+
         if (pluginConfig.isWorldDisabled(event.getLocation().getWorld().getName())) {
             CSLLogger.debug(() -> "%s world is disabled.".formatted(event.getLocation().getWorld().getName()));
             return;
@@ -201,16 +211,9 @@ public class EventListener implements Listener {
         if (event instanceof CreatureSpawnEvent creatureSpawnEvent) {
             String spawnReason = creatureSpawnEvent.getSpawnReason().name();
             if (!pluginConfig.getSpawnReasons().contains(spawnReason)) {
-                CSLLogger.debug(() -> "%s entity spawn ignored due to spawn reason: %s".formatted(event.getEntity().getType().name(), spawnReason));
+                CSLLogger.debug(() -> "%s entity spawn ignored due to spawn reason: %s".formatted(entityType.name(), spawnReason));
                 return;
             }
-        }
-
-        final Entity entity = event.getEntity();
-        final EntityType entityType = entity.getType();
-        if (!Checks.shouldTrackEntity(entity, pluginConfig)) {
-            CSLLogger.debug(() -> "%s entity not in entity limits.".formatted(entityType.name()));
-            return;
         }
 
         final Chunk chunk = entity.getLocation().getChunk();
