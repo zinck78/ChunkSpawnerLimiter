@@ -37,6 +37,10 @@ public class ChunkListener implements Listener {
         this.entityLoadEventsAvailable = available;
     }
 
+    public boolean hasEntityLoadEventsAvailable() {
+        return entityLoadEventsAvailable;
+    }
+
     public ChunkListener(Plugin plugin, PluginConfig pluginConfig,
                          CounterDataManager counterDataManager,
                          RemovalTaskManager removalTaskManager,
@@ -113,6 +117,10 @@ public class ChunkListener implements Listener {
     private void addEntityLimits(final @NotNull Chunk chunk, final ChunkCoord chunkCoord) {
         final Entity[] entities = chunk.getEntities();
         for (Entity entity: entities) {
+            // Legacy fallback for Actuality: initialize the movement cache
+            // exclusively from villagers, not every limited livestock type.
+            if (pluginConfig.isVillagerOnlyMovementTracking()
+                    && entity.getType() != EntityType.VILLAGER) continue;
             if (!Checks.shouldTrackEntity(entity, pluginConfig)) {
                 continue;
             }
@@ -134,7 +142,10 @@ public class ChunkListener implements Listener {
         boolean anyLimitedEntity = false;
 
         for (Entity entity : entities) {
-            if (!Checks.shouldTrackEntity(entity, pluginConfig)) continue;
+            // Resolve configured types once; a bat cannot enter any limit or
+            // movement logic unless an operator explicitly configures BAT.
+            if (!pluginConfig.getResolvedEntityTypes().contains(entity.getType())
+                    || !Checks.shouldTrackEntity(entity, pluginConfig)) continue;
             anyLimitedEntity = true;
             if (chunkTracker.isEnabled() && entity.getType() == EntityType.VILLAGER
                     && chunkTracker.recordEntryIfNew(entity, coord)) {
@@ -154,8 +165,28 @@ public class ChunkListener implements Listener {
         ChunkCoord coord = ChunkCoord.from(chunk);
         for (Entity entity : entities) {
             if (entity.getType() != EntityType.VILLAGER) continue;
-            chunkTracker.recordExit(entity);
-            counterDataManager.decrementEntityIfPresent(coord, EntityType.VILLAGER);
+            // An unload can fire twice or after a prior death/transform.
+            // Only decrement a villager that this tracker actually owned.
+            if (chunkTracker.removeIfTrackedInChunk(entity, coord)) {
+                counterDataManager.decrementEntityIfPresent(coord, EntityType.VILLAGER);
+            }
+        }
+    }
+
+    /**
+     * One-time POSTWORLD startup bootstrap. Paper may have loaded spawn chunks
+     * before plugin listeners existed. Only enumerate already-loaded entities.
+     * This does not capture block snapshots or load additional chunks.
+     */
+    public void bootstrapAlreadyLoadedEntities() {
+        if (!entityLoadEventsAvailable) return;
+        for (World world : plugin.getServer().getWorlds()) {
+            if (pluginConfig.isWorldDisabled(world.getName())) continue;
+            for (Chunk chunk : world.getLoadedChunks()) {
+                if (EntityLoadBridge.areEntitiesLoaded(chunk)) {
+                    onEntitiesLoaded(chunk, java.util.Arrays.asList(chunk.getEntities()));
+                }
+            }
         }
     }
 
