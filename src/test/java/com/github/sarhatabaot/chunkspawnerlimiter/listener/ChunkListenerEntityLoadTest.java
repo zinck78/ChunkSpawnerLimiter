@@ -197,4 +197,36 @@ class ChunkListenerEntityLoadTest {
         }
     }
 
+    @Test
+    void chunkLoadWithoutBlockLimitsDoesNoBlockWorkAndDoesNotLoadEntities() {
+        Plugin plugin = mock(Plugin.class);
+        PluginConfig config = mock(PluginConfig.class);
+        CounterDataManager counters = mock(CounterDataManager.class);
+        RemovalTaskManager removals = mock(RemovalTaskManager.class);
+        NamedPriorityEnforcer enforcer = mock(NamedPriorityEnforcer.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        BlockScanner scanner = mock(BlockScanner.class);
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        ChunkLoadEvent event = mock(ChunkLoadEvent.class);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(event.getWorld()).thenReturn(world);
+        when(event.getChunk()).thenReturn(chunk);
+        when(config.getTrackedBlockMaterials()).thenReturn(Set.of());
+        when(config.getRemovalMode()).thenReturn(
+                new com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.Prevent(removals));
+
+        try (MockedStatic<BlockScannerFactory> factory = mockStatic(BlockScannerFactory.class)) {
+            factory.when(() -> BlockScannerFactory.create(plugin, config, counters)).thenReturn(scanner);
+            ChunkListener listener = new ChunkListener(plugin, config, counters, removals, tracker, enforcer);
+            listener.setEntityLoadEventsAvailable(true);
+            listener.onChunkLoad(event);
+
+            verifyNoInteractions(scanner);
+            verify(chunk, never()).getEntities();
+        }
+    }
+
 }
