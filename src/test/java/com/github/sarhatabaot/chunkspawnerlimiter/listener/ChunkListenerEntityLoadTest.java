@@ -1,0 +1,109 @@
+package com.github.sarhatabaot.chunkspawnerlimiter.listener;
+
+import com.github.sarhatabaot.chunkspawnerlimiter.PluginConfig;
+import com.github.sarhatabaot.chunkspawnerlimiter.chunk.ChunkCoord;
+import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterData;
+import com.github.sarhatabaot.chunkspawnerlimiter.counter.CounterDataManager;
+import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScanner;
+import com.github.sarhatabaot.chunkspawnerlimiter.reflection.scanner.BlockScannerFactory;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.NamedPriorityEnforcer;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.RemovalTaskManager;
+import com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.RemovalMode;
+import com.github.sarhatabaot.chunkspawnerlimiter.tracker.EntityChunkTracker;
+import org.bukkit.Chunk;
+import org.bukkit.World;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.EntityType;
+import org.bukkit.event.world.ChunkLoadEvent;
+import org.bukkit.plugin.Plugin;
+import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
+
+class ChunkListenerEntityLoadTest {
+
+    @Test
+    void modernChunkLoadDoesNotEnumerateOrForceLoadEntities() {
+        Plugin plugin = mock(Plugin.class);
+        PluginConfig config = mock(PluginConfig.class);
+        CounterDataManager counters = mock(CounterDataManager.class);
+        RemovalTaskManager removals = mock(RemovalTaskManager.class);
+        NamedPriorityEnforcer enforcer = mock(NamedPriorityEnforcer.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        BlockScanner scanner = mock(BlockScanner.class);
+        RemovalMode mode = mock(RemovalMode.class);
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        ChunkLoadEvent event = mock(ChunkLoadEvent.class);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(event.getWorld()).thenReturn(world);
+        when(event.getChunk()).thenReturn(chunk);
+        when(config.getRemovalMode()).thenReturn(mode);
+        when(config.shouldTrimExistingOverflow()).thenReturn(true);
+        when(tracker.isEnabled()).thenReturn(true);
+
+        try (MockedStatic<BlockScannerFactory> factory = mockStatic(BlockScannerFactory.class)) {
+            factory.when(() -> BlockScannerFactory.create(plugin, config, counters)).thenReturn(scanner);
+            ChunkListener listener = new ChunkListener(plugin, config, counters, removals, tracker, enforcer);
+            listener.setEntityLoadEventsAvailable(true);
+            listener.onChunkLoad(event);
+
+            verify(chunk, never()).getEntities();
+            verify(enforcer, never()).queue(any(ChunkCoord.class));
+            verify(scanner).scanChunk(eq(chunk), any(ChunkCoord.class), eq(true));
+        }
+    }
+
+    @Test
+    void modernEntityLoadOnlyRegistersVillagersForMovementAndDoesNotCountBats() {
+        Plugin plugin = mock(Plugin.class);
+        PluginConfig config = mock(PluginConfig.class);
+        CounterDataManager counters = mock(CounterDataManager.class);
+        RemovalTaskManager removals = mock(RemovalTaskManager.class);
+        NamedPriorityEnforcer enforcer = mock(NamedPriorityEnforcer.class);
+        EntityChunkTracker tracker = mock(EntityChunkTracker.class);
+        BlockScanner scanner = mock(BlockScanner.class);
+        CounterData data = mock(CounterData.class);
+        World world = mock(World.class);
+        Chunk chunk = mock(Chunk.class);
+        Entity villager = mock(Entity.class);
+        Entity cow = mock(Entity.class);
+        Entity bat = mock(Entity.class);
+        when(world.getName()).thenReturn("world");
+        when(world.getUID()).thenReturn(UUID.randomUUID());
+        when(chunk.getWorld()).thenReturn(world);
+        when(counters.getCounterData(any(ChunkCoord.class))).thenReturn(data);
+        when(tracker.isEnabled()).thenReturn(true);
+        when(tracker.recordEntryIfNew(villager)).thenReturn(true, false);
+        when(config.hasResolvedEntityLimit(EntityType.VILLAGER)).thenReturn(true);
+        when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
+        when(config.getEntityGroupTotalMembers(any(EntityType.class))).thenReturn(Set.of());
+        when(config.shouldTrimExistingOverflow()).thenReturn(true);
+        when(villager.getType()).thenReturn(EntityType.VILLAGER);
+        when(cow.getType()).thenReturn(EntityType.COW);
+        when(bat.getType()).thenReturn(EntityType.BAT);
+
+        try (MockedStatic<BlockScannerFactory> factory = mockStatic(BlockScannerFactory.class)) {
+            factory.when(() -> BlockScannerFactory.create(plugin, config, counters)).thenReturn(scanner);
+            ChunkListener listener = new ChunkListener(plugin, config, counters, removals, tracker, enforcer);
+
+            listener.onEntitiesLoaded(chunk, List.of(bat, cow, villager));
+            listener.onEntitiesLoaded(chunk, List.of(villager));
+
+            verify(tracker, times(2)).recordEntryIfNew(villager);
+            verify(tracker, never()).recordEntryIfNew(cow);
+            verify(tracker, never()).recordEntryIfNew(bat);
+            verify(data, times(1)).incrementEntity(EntityType.VILLAGER);
+            verify(enforcer, times(2)).queue(any(ChunkCoord.class));
+        }
+    }
+}
