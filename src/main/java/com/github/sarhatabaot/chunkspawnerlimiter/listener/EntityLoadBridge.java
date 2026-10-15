@@ -88,12 +88,11 @@ public final class EntityLoadBridge {
      * The API event supplies Entity instances. Filter reflectively to keep this
      * bridge loadable by older Spigot versions.
      */
+    @SuppressWarnings("unchecked")
     private static Iterable<Entity> typedEntities(Iterable<?> raw) {
-        java.util.List<Entity> entities = new java.util.ArrayList<>();
-        for (Object value : raw) {
-            if (value instanceof Entity entity) entities.add(entity);
-        }
-        return entities;
+        // EntitiesLoadEvent guarantees an iterable of Entity. Reuse its list:
+        // no array copy, second scan, or allocation on every entity load.
+        return (Iterable<Entity>) raw;
     }
 
     private static Method findEntitiesLoadedMethod() {
