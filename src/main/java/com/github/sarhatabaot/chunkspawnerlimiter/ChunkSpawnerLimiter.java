@@ -70,12 +70,13 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
 
         // Lazy mode creates no repeating movement task and no per-entity UUID map.
         // Spawn/breeding/overflow checks use chunk.getEntities() on demand.
+        final boolean villagersOnlyMovement = pluginConfig.isVillagerOnlyMovementTracking();
         this.entityChunkTracker = pluginConfig.isEntityMovementTrackingEnabled()
                 ? new EntityChunkTracker(
                         this, counterDataManager,
-                        entity -> Checks.shouldTrackEntity(entity, pluginConfig)
-                                && (!pluginConfig.isVillagerOnlyMovementTracking()
-                                    || entity.getType() == org.bukkit.entity.EntityType.VILLAGER),
+                        entity -> (!villagersOnlyMovement
+                                    || entity.getType() == org.bukkit.entity.EntityType.VILLAGER)
+                                && Checks.shouldTrackEntity(entity, pluginConfig),
                         40L)
                 : EntityChunkTracker.disabled(this, counterDataManager);
 
