@@ -121,9 +121,18 @@ public class EntityChunkTracker {
      * can sometimes refer to the same entity. Never double count its UUID.
      */
     public boolean recordEntryIfNew(@NotNull Entity entity) {
+        return recordEntryIfNew(entity, ChunkCoord.from(entity));
+    }
+
+    /**
+     * Use a chunk coordinate supplied by EntitiesLoadEvent rather than calling
+     * entity.getLocation().getChunk() during an entity-loading callback.
+     */
+    public boolean recordEntryIfNew(@NotNull Entity entity, @NotNull ChunkCoord coord) {
         if (!enabled || !isTracked.test(entity)) return false;
         UUID uuid = entity.getUniqueId();
-        TrackedEntity old = trackedEntities.put(uuid, TrackedEntity.from(entity));
+        TrackedEntity old = trackedEntities.put(uuid,
+                new TrackedEntity(coord, entity.getType(), entity));
         pollingQueue.add(uuid);
         return old == null;
     }
