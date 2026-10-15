@@ -38,7 +38,7 @@ class ChunkListenerEntityLoadTest {
         NamedPriorityEnforcer enforcer = mock(NamedPriorityEnforcer.class);
         EntityChunkTracker tracker = mock(EntityChunkTracker.class);
         BlockScanner scanner = mock(BlockScanner.class);
-        RemovalMode mode = mock(RemovalMode.class);
+        RemovalMode mode = new com.github.sarhatabaot.chunkspawnerlimiter.removal.modes.Prevent(removals);
         World world = mock(World.class);
         Chunk chunk = mock(Chunk.class);
         ChunkLoadEvent event = mock(ChunkLoadEvent.class);
