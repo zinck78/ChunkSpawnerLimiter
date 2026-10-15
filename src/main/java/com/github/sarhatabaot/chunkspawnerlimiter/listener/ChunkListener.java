@@ -137,7 +137,7 @@ public class ChunkListener implements Listener {
             if (!Checks.shouldTrackEntity(entity, pluginConfig)) continue;
             anyLimitedEntity = true;
             if (chunkTracker.isEnabled() && entity.getType() == EntityType.VILLAGER
-                    && chunkTracker.recordEntryIfNew(entity)) {
+                    && chunkTracker.recordEntryIfNew(entity, coord)) {
                 counterDataManager.getCounterData(coord).incrementEntity(EntityType.VILLAGER);
             }
         }
