@@ -87,8 +87,11 @@ public class ChunkListener implements Listener {
             }
         }
         
-        // Scan blocks asynchronously on chunk load
-        blockScanner.scanChunk(chunk, chunkCoord, true);
+        // Actuality has no block limits: avoid invoking the block scanner
+        // at all. Retain the existing scanner for configured block caps.
+        if (!pluginConfig.getTrackedBlockMaterials().isEmpty()) {
+            blockScanner.scanChunk(chunk, chunkCoord, true);
+        }
 
         RemovalMode removalMode = pluginConfig.getRemovalMode();
         if (removalMode.removesExistingEntities()) {
