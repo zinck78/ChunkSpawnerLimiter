@@ -73,7 +73,10 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.entityChunkTracker = pluginConfig.isEntityMovementTrackingEnabled()
                 ? new EntityChunkTracker(
                         this, counterDataManager,
-                        entity -> Checks.shouldTrackEntity(entity, pluginConfig), 40L)
+                        entity -> Checks.shouldTrackEntity(entity, pluginConfig)
+                                && (!pluginConfig.isVillagerOnlyMovementTracking()
+                                    || entity.getType() == org.bukkit.entity.EntityType.VILLAGER),
+                        40L)
                 : EntityChunkTracker.disabled(this, counterDataManager);
 
         RemovalMode.setup(removalTaskManager);
@@ -85,6 +88,12 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.chunkListener = new ChunkListener(this, pluginConfig, counterDataManager,
                 removalTaskManager, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(chunkListener, this);
+        // Optional modern hook: avoid forcing entity loads from ChunkLoadEvent.
+        if (pluginConfig.isVillagerOnlyMovementTracking()) {
+            chunkListener.setEntityLoadEventsAvailable(
+                    com.github.sarhatabaot.chunkspawnerlimiter.listener.EntityLoadBridge
+                            .registerIfSupported(this, chunkListener));
+        }
         EventListener eventListener = new EventListener(this, pluginConfig, counterDataManager,
                 notificationService, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(eventListener, this);
