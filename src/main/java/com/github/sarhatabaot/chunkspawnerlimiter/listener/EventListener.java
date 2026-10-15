@@ -208,8 +208,7 @@ public class EventListener implements Listener {
 
         final Entity entity = event.getEntity();
         final EntityType entityType = entity.getType();
-        if (!pluginConfig.getResolvedEntityTypes().contains(entityType)
-                || !Checks.shouldTrackEntity(entity, pluginConfig)) {
+        if (!Checks.shouldTrackEntity(entity, pluginConfig)) {
             CSLLogger.debug(() -> "%s entity not in entity limits.".formatted(entityType.name()));
             return;
         }
