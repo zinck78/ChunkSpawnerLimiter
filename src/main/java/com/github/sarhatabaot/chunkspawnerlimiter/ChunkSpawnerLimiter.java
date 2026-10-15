@@ -70,10 +70,12 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
 
         // Lazy mode creates no repeating movement task and no per-entity UUID map.
         // Spawn/breeding/overflow checks use chunk.getEntities() on demand.
+        final boolean villagersOnlyMovement = pluginConfig.isVillagerOnlyMovementTracking();
         this.entityChunkTracker = pluginConfig.isEntityMovementTrackingEnabled()
                 ? new EntityChunkTracker(
                         this, counterDataManager,
-                        entity -> Checks.shouldTrackEntity(entity, pluginConfig), 40L)
+                        entity -> shouldTrackForMovement(entity, pluginConfig, villagersOnlyMovement),
+                        40L)
                 : EntityChunkTracker.disabled(this, counterDataManager);
 
         RemovalMode.setup(removalTaskManager);
@@ -85,6 +87,12 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.chunkListener = new ChunkListener(this, pluginConfig, counterDataManager,
                 removalTaskManager, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(chunkListener, this);
+        // Optional modern hook: avoid forcing entity loads from ChunkLoadEvent.
+        if (pluginConfig.isVillagerOnlyMovementTracking()) {
+            chunkListener.setEntityLoadEventsAvailable(
+                    com.github.sarhatabaot.chunkspawnerlimiter.listener.EntityLoadBridge
+                            .registerIfSupported(this, chunkListener));
+        }
         EventListener eventListener = new EventListener(this, pluginConfig, counterDataManager,
                 notificationService, entityChunkTracker, priorityEnforcer);
         pluginManager.registerEvents(eventListener, this);
@@ -94,10 +102,30 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
 
         // Loaded spawn chunks may predate plugin enable. Reconcile existing
         // overflow once, but never start periodic entity movement polling.
-        if (rebuildLoadedChunks ||
-                (pluginConfig.shouldTrimExistingOverflow() && !entityChunkTracker.isEnabled())) {
+        if (rebuildLoadedChunks) {
+            // Configuration reloads also refresh block counters for loaded chunks.
+            chunkListener.rebuildLoadedChunks();
+        } else if (chunkListener.hasEntityLoadEventsAvailable()) {
+            // POSTWORLD plugins may enable after spawn chunks already loaded.
+            // Bootstrap only existing entity data without forcing entity loading.
+            chunkListener.bootstrapAlreadyLoadedEntities();
+        } else if (pluginConfig.shouldTrimExistingOverflow() && !entityChunkTracker.isEnabled()) {
+            // Preserve the legacy lazy-mode initial overflow pass.
             chunkListener.rebuildLoadedChunks();
         }
+    }
+
+    /**
+     * Actuality's hot-path movement predicate. Animal/bat entities are rejected
+     * before any limit/group lookups; only villagers ever enter the UUID tracker
+     * when villagers-only mode is configured.
+     */
+    static boolean shouldTrackForMovement(org.bukkit.entity.Entity entity,
+                                          PluginConfig config, boolean villagersOnly) {
+        if (villagersOnly && entity.getType() != org.bukkit.entity.EntityType.VILLAGER) {
+            return false;
+        }
+        return Checks.shouldTrackEntity(entity, config);
     }
 
     private void registerCommands() {

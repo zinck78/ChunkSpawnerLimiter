@@ -602,6 +602,14 @@ public class PluginConfig {
     }
 
     /**
+     * Actuality opt-in: only villagers need periodic movement polling.
+     * Defaults to false to preserve the generic plugin's existing behavior.
+     */
+    public boolean isVillagerOnlyMovementTracking() {
+        return config.getBoolean("entities.movement-tracking.villagers-only", false);
+    }
+
+    /**
      * Checks if raid-related entities should be preserved from removal.
      *
      * @return true if raid entities should be preserved, false otherwise

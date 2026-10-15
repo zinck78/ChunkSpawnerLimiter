@@ -113,10 +113,29 @@ public class EntityChunkTracker {
      * Record that an entity exists in a specific chunk (call on spawn/world-entry).
      */
     public void recordEntry(@NotNull Entity entity) {
-        if (!enabled || !isTracked.test(entity)) return;
+        recordEntryIfNew(entity);
+    }
+
+    /**
+     * Register loaded entities idempotently: entity load and reload bootstrap
+     * can sometimes refer to the same entity. Never double count its UUID.
+     */
+    public boolean recordEntryIfNew(@NotNull Entity entity) {
+        if (!enabled || !isTracked.test(entity)) return false;
+        return recordEntryIfNew(entity, ChunkCoord.from(entity));
+    }
+
+    /**
+     * Use a chunk coordinate supplied by EntitiesLoadEvent rather than calling
+     * entity.getLocation().getChunk() during an entity-loading callback.
+     */
+    public boolean recordEntryIfNew(@NotNull Entity entity, @NotNull ChunkCoord coord) {
+        if (!enabled || !isTracked.test(entity)) return false;
         UUID uuid = entity.getUniqueId();
-        trackedEntities.put(uuid, TrackedEntity.from(entity));
+        TrackedEntity old = trackedEntities.put(uuid,
+                new TrackedEntity(coord, entity.getType(), entity));
         pollingQueue.add(uuid);
+        return old == null;
     }
 
     /**
@@ -127,6 +146,23 @@ public class EntityChunkTracker {
         UUID uuid = entity.getUniqueId();
         trackedEntities.remove(uuid);
         pollingQueue.remove(uuid);
+    }
+
+    /**
+     * Remove an entity only if the same loaded entity is still tracked in the
+     * chunk which emitted EntitiesUnloadEvent. Double unloads must not
+     * decrement counters twice, and late old-chunk unloads must not drop a
+     * villager that has already been reconciled into a new chunk.
+     */
+    public boolean removeIfTrackedInChunk(@NotNull Entity entity, @NotNull ChunkCoord chunk) {
+        if (!enabled) return false;
+        UUID uuid = entity.getUniqueId();
+        TrackedEntity current = trackedEntities.get(uuid);
+        if (current == null || !current.chunkCoord().equals(chunk)
+                || current.entity() != entity) return false;
+        if (!trackedEntities.remove(uuid, current)) return false;
+        pollingQueue.remove(uuid);
+        return true;
     }
 
     public void forgetChunk(@NotNull ChunkCoord chunkCoord) {
