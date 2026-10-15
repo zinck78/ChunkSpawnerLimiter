@@ -148,6 +148,23 @@ public class EntityChunkTracker {
         pollingQueue.remove(uuid);
     }
 
+    /**
+     * Remove an entity only if the same loaded entity is still tracked in the
+     * chunk which emitted EntitiesUnloadEvent. Double unloads must not
+     * decrement counters twice, and late old-chunk unloads must not drop a
+     * villager that has already been reconciled into a new chunk.
+     */
+    public boolean removeIfTrackedInChunk(@NotNull Entity entity, @NotNull ChunkCoord chunk) {
+        if (!enabled) return false;
+        UUID uuid = entity.getUniqueId();
+        TrackedEntity current = trackedEntities.get(uuid);
+        if (current == null || !current.chunkCoord().equals(chunk)
+                || current.entity() != entity) return false;
+        if (!trackedEntities.remove(uuid, current)) return false;
+        pollingQueue.remove(uuid);
+        return true;
+    }
+
     public void forgetChunk(@NotNull ChunkCoord chunkCoord) {
         if (!enabled) return;
         for (Map.Entry<UUID, TrackedEntity> entry : trackedEntities.entrySet()) {
