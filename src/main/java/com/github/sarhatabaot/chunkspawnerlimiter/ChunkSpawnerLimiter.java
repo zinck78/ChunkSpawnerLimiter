@@ -74,9 +74,7 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
         this.entityChunkTracker = pluginConfig.isEntityMovementTrackingEnabled()
                 ? new EntityChunkTracker(
                         this, counterDataManager,
-                        entity -> (!villagersOnlyMovement
-                                    || entity.getType() == org.bukkit.entity.EntityType.VILLAGER)
-                                && Checks.shouldTrackEntity(entity, pluginConfig),
+                        entity -> shouldTrackForMovement(entity, pluginConfig, villagersOnlyMovement),
                         40L)
                 : EntityChunkTracker.disabled(this, counterDataManager);
 
@@ -115,6 +113,19 @@ public class ChunkSpawnerLimiter extends JavaPlugin {
             // Preserve the legacy lazy-mode initial overflow pass.
             chunkListener.rebuildLoadedChunks();
         }
+    }
+
+    /**
+     * Actuality's hot-path movement predicate. Animal/bat entities are rejected
+     * before any limit/group lookups; only villagers ever enter the UUID tracker
+     * when villagers-only mode is configured.
+     */
+    static boolean shouldTrackForMovement(org.bukkit.entity.Entity entity,
+                                          PluginConfig config, boolean villagersOnly) {
+        if (villagersOnly && entity.getType() != org.bukkit.entity.EntityType.VILLAGER) {
+            return false;
+        }
+        return Checks.shouldTrackEntity(entity, config);
     }
 
     private void registerCommands() {
