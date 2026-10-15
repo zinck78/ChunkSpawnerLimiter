@@ -83,7 +83,7 @@ class ChunkListenerEntityLoadTest {
         when(chunk.getWorld()).thenReturn(world);
         when(counters.getCounterData(any(ChunkCoord.class))).thenReturn(data);
         when(tracker.isEnabled()).thenReturn(true);
-        when(tracker.recordEntryIfNew(villager)).thenReturn(true, false);
+        when(tracker.recordEntryIfNew(eq(villager), any(ChunkCoord.class))).thenReturn(true, false);
         when(config.hasResolvedEntityLimit(EntityType.VILLAGER)).thenReturn(true);
         when(config.hasResolvedEntityLimit(EntityType.COW)).thenReturn(true);
         when(config.getEntityGroupTotalMembers(any(EntityType.class))).thenReturn(Set.of());
@@ -99,9 +99,9 @@ class ChunkListenerEntityLoadTest {
             listener.onEntitiesLoaded(chunk, List.of(bat, cow, villager));
             listener.onEntitiesLoaded(chunk, List.of(villager));
 
-            verify(tracker, times(2)).recordEntryIfNew(villager);
-            verify(tracker, never()).recordEntryIfNew(cow);
-            verify(tracker, never()).recordEntryIfNew(bat);
+            verify(tracker, times(2)).recordEntryIfNew(eq(villager), any(ChunkCoord.class));
+            verify(tracker, never()).recordEntryIfNew(eq(cow), any(ChunkCoord.class));
+            verify(tracker, never()).recordEntryIfNew(eq(bat), any(ChunkCoord.class));
             verify(data, times(1)).incrementEntity(EntityType.VILLAGER);
             verify(enforcer, times(2)).queue(any(ChunkCoord.class));
         }
